@@ -1,182 +1,222 @@
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+// import ReactMarkdown from "react-markdown";
+import ChatPage from "./pages/ChatPage";
+import Dashboard from "./pages/Dashboard";
 function App() {
-
   const [prompt, setPrompt] = useState("");
-
-  const [response, setResponse] = useState("");
-
+  const [messages, setMessages] = useState([]);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activePage, setActivePage] = useState("chat");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedChatId, setSelectedChatId] = useState(null);
+
+  const [stats, setStats] = useState({
+    total_requests: 0,
+    avg_latency: 0,
+  });
+
+  useEffect(() => {
+    fetchHistory();
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const res = await axios.get("http://127.0.0.1:8000/stats");
+      setStats(res.data);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await axios.get("http://127.0.0.1:8000/history");
+      setHistory(res.data);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const loadChat = async (chatId) => {
+    try {
+      const res = await axios.get(
+        `http://127.0.0.1:8000/history/${chatId}`
+      );
+
+      setMessages([
+        {
+          role: "user",
+          content: res.data.prompt,
+        },
+        {
+          role: "assistant",
+          content: res.data.response,
+        },
+      ]);
+    } catch (error) {
+      console.log(error);
+    }
+  };
 
   const sendPrompt = async () => {
-
-    if (!prompt) return;
+    if (!prompt.trim()) return;
 
     setLoading(true);
 
     try {
-
-      const res = await fetch(
-        `http://127.0.0.1:8000/chat?prompt=${prompt}`
+      const res = await axios.get(
+        `http://127.0.0.1:8000/chat?prompt=${encodeURIComponent(prompt)}`
       );
 
-      const data = await res.json();
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "user",
+          content: prompt,
+        },
+        {
+          role: "assistant",
+          content: res.data.response,
+        },
+      ]);
 
-      setResponse(data.response);
+      setPrompt("");
 
+      fetchHistory();
+      fetchStats();
     } catch (error) {
-
-      setResponse("Error connecting to backend");
-
+      console.log(error);
     }
 
     setLoading(false);
   };
-
+const filteredHistory = history.filter((chat) =>
+  chat.prompt
+    .toLowerCase()
+    .includes(searchTerm.toLowerCase())
+);
   return (
+    <div className="flex h-screen bg-slate-950 text-white">
 
-    <div className="flex h-screen bg-gray-950 text-white">
+      {/* Sidebar */}
+<div className="w-80 bg-slate-900 p-4 border-r border-slate-800 flex flex-col">
 
-      {/* SIDEBAR */}
+  <h1 className="text-3xl font-bold mb-6">
+    LLM Platform
+  </h1>
 
-      <div className="w-72 bg-gray-900 border-r border-gray-800 p-6">
+  <button
+    onClick={() => {
+      setActivePage("chat");
+      setMessages([]);
+      setPrompt("");
+      setSelectedChatId(null);
+    }}
+    className="bg-blue-600 hover:bg-blue-700 p-4 rounded-xl font-semibold mb-6"
+  >
+    + New Chat
+  </button>
 
-        <h1 className="text-2xl font-bold mb-10">
-          LLM Platform
-        </h1>
+  <div className="space-y-3 mb-6">
 
-        <button
-          className="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-xl font-semibold mb-8"
-        >
-          + New Chat
-        </button>
+  <button
+    onClick={() => setActivePage("dashboard")}
+    className="w-full bg-slate-800 hover:bg-slate-700 p-4 rounded-xl text-left"
+  >
+    📊 Dashboard
+  </button>
 
-        <div className="space-y-4">
+</div>
+  <input
+    type="text"
+    placeholder="🔍 Search chats..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="
+      w-full
+      bg-slate-800
+      text-white
+      p-3
+      rounded-xl
+      mb-4
+      border
+      border-slate-700
+      outline-none
+    "
+  />
 
-          <div className="bg-gray-800 p-4 rounded-lg cursor-pointer hover:bg-gray-700">
-            AI Observability
-          </div>
+  <div className="flex-1 overflow-y-auto space-y-3 pr-2">
 
-          <div className="bg-gray-800 p-4 rounded-lg cursor-pointer hover:bg-gray-700">
-            Prometheus Metrics
-          </div>
-
-          <div className="bg-gray-800 p-4 rounded-lg cursor-pointer hover:bg-gray-700">
-            Langfuse Traces
-          </div>
-
+    {filteredHistory.map((chat) => (
+      <button
+        key={chat.id}
+        onClick={() => {
+          setSelectedChatId(chat.id);
+          setActivePage("chat");
+          loadChat(chat.id);
+        }}
+        className={`w-full p-4 rounded-xl text-left transition
+        ${
+          selectedChatId === chat.id
+            ? "bg-blue-600"
+            : "bg-slate-800 hover:bg-slate-700"
+        }`}
+      >
+        <div className="font-semibold truncate">
+          {chat.prompt}
         </div>
 
-      </div>
+        <div className="text-xs text-slate-300 mt-2">
+          {new Date(chat.created_at).toLocaleString()}
+        </div>
+      </button>
+    ))}
 
-      {/* MAIN CONTENT */}
+  </div>
 
+</div>
+
+      {/* Main Content */}
       <div className="flex-1 flex flex-col">
 
-        {/* HEADER */}
+        {/* Header */}
+        <div className="flex justify-between items-center p-6 border-b border-slate-800">
 
-        <div className="border-b border-gray-800 p-6 flex justify-between items-center">
-
-          <h2 className="text-3xl font-bold">
-            AI Assistant
-          </h2>
+          <h1 className="text-5xl font-bold">
+            {activePage === "chat"
+              ? "AI Assistant"
+              : "Observability Dashboard"}
+          </h1>
 
           <div className="flex gap-4">
 
-            <div className="bg-gray-900 px-4 py-2 rounded-lg">
-              Requests: 24
+            <div className="bg-slate-800 px-6 py-3 rounded-xl">
+              Requests: {stats.total_requests}
             </div>
 
-            <div className="bg-gray-900 px-4 py-2 rounded-lg">
-              Latency: 420ms
+            <div className="bg-slate-800 px-6 py-3 rounded-xl">
+              Latency: {stats.avg_latency}ms
             </div>
 
           </div>
 
         </div>
 
-        {/* CHAT AREA */}
-
-        <div className="flex-1 overflow-y-auto p-10">
-
-          {/* USER MESSAGE */}
-
-          {
-            prompt && (
-
-              <div className="flex justify-end mb-6">
-
-                <div className="bg-blue-600 p-4 rounded-2xl max-w-2xl">
-                  {prompt}
-                </div>
-
-              </div>
-
-            )
-          }
-
-          {/* AI RESPONSE */}
-
-          {
-            response && (
-
-              <div className="flex justify-start">
-
-                <div className="bg-gray-800 p-6 rounded-2xl max-w-4xl leading-8 text-gray-200">
-
-                  {
-                    loading
-                    ? (
-                      <p className="text-blue-400">
-                        Loading...
-                      </p>
-                    )
-                    : (
-                      <div className="prose prose-invert max-w-none">
-                        <ReactMarkdown>
-                          {response}
-                        </ReactMarkdown>
-                      </div>
-                    )
-                  }
-
-                </div>
-
-              </div>
-
-            )
-          }
-
-        </div>
-
-        {/* INPUT AREA */}
-
-        <div className="border-t border-gray-800 p-6">
-
-          <div className="flex gap-4">
-
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Ask anything..."
-              className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-lg outline-none focus:border-blue-500"
-            />
-
-            <button
-              onClick={sendPrompt}
-              className="bg-blue-600 hover:bg-blue-700 px-8 rounded-xl font-semibold"
-            >
-              Send
-            </button>
-
-          </div>
-
-        </div>
-
+        {activePage === "chat" ? (
+  <ChatPage
+    messages={messages}
+    loading={loading}
+    prompt={prompt}
+    setPrompt={setPrompt}
+    sendPrompt={sendPrompt}
+  />
+) : (
+  <Dashboard stats={stats} />
+)}
       </div>
-
     </div>
   );
 }

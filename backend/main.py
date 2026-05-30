@@ -1,29 +1,41 @@
-from fastapi import FastAPI
-from groq import Groq
-from dotenv import load_dotenv
-from prometheus_fastapi_instrumentator import Instrumentator
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry import trace
-from database import engine
-from models import Base
-from langfuse import Langfuse
-from sqlalchemy.orm import Session
-from fastapi import Depends
-from database import get_db
-from models import ChatHistory
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-import os
+from dotenv import load_dotenv
+from groq import Groq
 
-# Load environment variables
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from sqlalchemy.orm import Session
+
+from database import engine, get_db
+from models import Base, ChatHistory
+
+from telemetry import tracer
+
+from langfuse import Langfuse
+
+import os
+import time
+
+# -----------------------------
+# LOAD ENV
+# -----------------------------
+
 load_dotenv()
+
+# -----------------------------
+# DATABASE
+# -----------------------------
 
 Base.metadata.create_all(bind=engine)
 
-# FastAPI app
-app = FastAPI()
+# -----------------------------
+# FASTAPI APP
+# -----------------------------
+
+app = FastAPI(title="LLM Observability Platform")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,36 +43,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# -----------------------------
-# LANGFUSE SETUP
-# -----------------------------
-
-langfuse = Langfuse(
-    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
-    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
-    host=os.getenv("LANGFUSE_HOST")
-)
 
 # -----------------------------
-# OPENTELEMETRY + JAEGER SETUP
-# -----------------------------
-
-trace.set_tracer_provider(TracerProvider())
-
-tracer_provider = trace.get_tracer_provider()
-
-otlp_exporter = OTLPSpanExporter(
-    endpoint="http://localhost:4318/v1/traces"
-)
-
-span_processor = BatchSpanProcessor(otlp_exporter)
-
-tracer_provider.add_span_processor(span_processor)
-
-tracer = trace.get_tracer(__name__)
-
-# -----------------------------
-# PROMETHEUS METRICS
+# PROMETHEUS
 # -----------------------------
 
 Instrumentator().instrument(app).expose(app)
@@ -74,71 +59,240 @@ client = Groq(
 )
 
 # -----------------------------
-# HOME ENDPOINT
+# LANGFUSE CLIENT
+# -----------------------------
+
+langfuse = Langfuse(
+    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+    host=os.getenv("LANGFUSE_HOST")
+)
+
+# -----------------------------
+# HOME
 # -----------------------------
 
 @app.get("/")
-def home():
-    return {
-        "message": "LLM Observability Platform Running"
-    }
+def root():
+
+    with tracer.start_as_current_span("root_endpoint"):
+
+        return {
+            "message": "LLM Observability Platform Running"
+        }
 
 # -----------------------------
-# CHAT ENDPOINT
+# CHAT
 # -----------------------------
 
 @app.get("/chat")
-def chat(prompt: str, db: Session = Depends(get_db)):
-
+def chat(
+    prompt: str,
+    db: Session = Depends(get_db)
+):
 
     with tracer.start_as_current_span("llm_request"):
 
-        # Langfuse Trace
         trace_obj = langfuse.trace(
-            name="llm_request"
+            name="llm_request",
+            input=prompt,
+            metadata={
+                "provider": "groq",
+                "application": "llm-observability-platform",
+                "environment": "development",
+                "user_id": "demo_user"
+            }
         )
 
-        # Langfuse Generation
         generation = trace_obj.generation(
-            name="groq-response",
+            name="groq_generation",
             model="llama-3.3-70b-versatile",
-            input=prompt
+            input=prompt,
+            metadata={
+                "provider": "groq",
+                "temperature": 0.7
+            }
         )
 
-        # Groq API Call
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
+        start_time = time.time()
 
-        # Extract response text
+        # ---------------------
+        # GROQ API CALL
+        # ---------------------
+
+        with tracer.start_as_current_span("groq_api_call"):
+
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
         response_text = response.choices[0].message.content
-        # SAVE INTO POSTGRESQL
-        chat_record = ChatHistory(
-            prompt=prompt,
-            response=response_text,
-            model="llama-3.3-70b-versatile",
-            latency=0.0
-        )
 
-        db.add(chat_record)
+        latency = round(time.time() - start_time, 2)
 
-        db.commit()
+        # ---------------------
+        # TOKEN USAGE
+        # ---------------------
 
-        db.refresh(chat_record)
-        # End Langfuse generation
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+
+        if hasattr(response, "usage") and response.usage:
+
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
+            total_tokens = response.usage.total_tokens
+
+        # ---------------------
+        # SAVE TO POSTGRES
+        # ---------------------
+
+        with tracer.start_as_current_span("save_to_postgres"):
+
+            chat_record = ChatHistory(
+                prompt=prompt,
+                response=response_text,
+                model="llama-3.3-70b-versatile",
+                latency=latency
+            )
+
+            db.add(chat_record)
+            db.commit()
+            db.refresh(chat_record)
+
+        # ---------------------
+        # LANGFUSE GENERATION
+        # ---------------------
+
         generation.end(
-            output=response_text
+            output=response_text,
+            usage_details={
+                "input": prompt_tokens,
+                "output": completion_tokens,
+                "total": total_tokens
+            },
+            metadata={
+                "latency_seconds": latency
+            }
         )
 
-        # Return API response
+        # ---------------------
+        # LANGFUSE TRACE
+        # ---------------------
+
+        trace_obj.update(
+            output=response_text,
+            metadata={
+                "provider": "groq",
+                "latency_seconds": latency,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "database_id": chat_record.id
+            }
+        )
+
+        langfuse.flush()
+
         return {
+            "id": chat_record.id,
             "prompt": prompt,
-            "response": response_text
+            "response": response_text,
+            "latency": latency,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens
         }
 
+# -----------------------------
+# CHAT HISTORY
+# -----------------------------
+
+@app.get("/history")
+def get_history(
+    db: Session = Depends(get_db)
+):
+
+    with tracer.start_as_current_span("get_history"):
+
+        chats = (
+            db.query(ChatHistory)
+            .order_by(ChatHistory.created_at.desc())
+            .all()
+        )
+
+        return [
+            {
+                "id": chat.id,
+                "prompt": chat.prompt,
+                "response": chat.response,
+                "created_at": chat.created_at
+            }
+            for chat in chats
+        ]
+
+# -----------------------------
+# SINGLE CHAT
+# -----------------------------
+
+@app.get("/history/{chat_id}")
+def get_chat(
+    chat_id: int,
+    db: Session = Depends(get_db)
+):
+
+    with tracer.start_as_current_span("get_chat_by_id"):
+
+        chat = (
+            db.query(ChatHistory)
+            .filter(ChatHistory.id == chat_id)
+            .first()
+        )
+
+        if not chat:
+            return {"error": "Chat not found"}
+
+        return {
+            "id": chat.id,
+            "prompt": chat.prompt,
+            "response": chat.response,
+            "model": chat.model,
+            "latency": chat.latency,
+            "created_at": chat.created_at
+        }
+
+# -----------------------------
+# STATS
+# -----------------------------
+
+@app.get("/stats")
+def get_stats(
+    db: Session = Depends(get_db)
+):
+
+    with tracer.start_as_current_span("get_stats"):
+
+        chats = db.query(ChatHistory).all()
+
+        total_requests = len(chats)
+
+        avg_latency = 0
+
+        if chats:
+            avg_latency = round(
+                sum(chat.latency for chat in chats)
+                / len(chats),
+                2
+            )
+
+        return {
+            "total_requests": total_requests,
+            "avg_latency": avg_latency
+        }
