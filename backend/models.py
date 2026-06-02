@@ -8,7 +8,10 @@ class ChatHistory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
+    username = Column(String)
+
     prompt = Column(Text)
+
 
     response = Column(Text)
 
@@ -17,3 +20,17 @@ class ChatHistory(Base):
     latency = Column(Float)
 
     created_at = Column(DateTime, default=datetime.utcnow)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    cost = Column(Float, default=0)
+
+class User(Base):
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    username = Column(String, unique=True)
+
+    password = Column(String)

@@ -1,18 +1,28 @@
 import ReactMarkdown from "react-markdown";
-
+import { useState, useEffect, useRef } from "react";
 export default function ChatPage({
   messages,
   loading,
   prompt,
   setPrompt,
-  sendPrompt
+  sendPrompt,
+  setToast
 }) {
+  const [copiedIndex, setCopiedIndex] = useState(null);
+  const messagesEndRef = useRef(null);
+  const [model, setModel] = useState("groq");
+useEffect(() => {
+  messagesEndRef.current?.scrollIntoView({
+    behavior: "smooth",
+  });
+}, [messages]);
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendPrompt();
+      sendPrompt(model);
     }
   };
+  
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden">
@@ -50,14 +60,43 @@ export default function ChatPage({
               }`}
             >
               {msg.role === "assistant" ? (
-                <div className="prose prose-invert max-w-none">
-                  <ReactMarkdown>
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p>{msg.content}</p>
-              )}
+  <>
+    <div className="prose prose-invert max-w-none">
+      <ReactMarkdown>
+        {msg.content}
+      </ReactMarkdown>
+    </div>
+
+    <div className="flex justify-end mt-3">
+  <button
+    onClick={() => {
+      navigator.clipboard.writeText(msg.content);
+
+      setCopiedIndex(index);
+      setToast("✅ Response copied")
+      setTimeout(() => {
+        setCopiedIndex(null);
+        setToast("");
+      }, 2000);
+    }}
+    className="
+      text-sm
+      bg-slate-700
+      hover:bg-slate-600
+      px-3
+      py-1
+      rounded-lg
+    "
+  >
+    {copiedIndex === index
+      ? "✅ Copied"
+      : "📋 Copy"}
+  </button>
+</div>
+  </>
+) : (
+  <p>{msg.content}</p>
+)}
             </div>
           </div>
         ))}
@@ -71,6 +110,7 @@ export default function ChatPage({
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
 
       </div>
 
@@ -78,44 +118,65 @@ export default function ChatPage({
 
       <div className="border-t border-slate-800 p-6">
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
 
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything..."
-            rows={2}
-            className="
-              flex-1
-              bg-slate-800
-              text-white
-              rounded-xl
-              p-4
-              resize-none
-              outline-none
-              border
-              border-slate-700
-              focus:border-blue-500
-            "
-          />
+  <select
+    value={model}
+    onChange={(e) => setModel(e.target.value)}
+    className="
+        h-16
+        bg-slate-800
+        text-white
+        border
+        border-slate-700
+        rounded-xl
+        px-4
+"
+  >
+    <option value="groq">Groq</option>
+    <option value="gemini">Gemini</option>
+    <option value="ollama">Ollama</option>
+  </select>
 
-          <button
-            onClick={sendPrompt}
-            disabled={loading}
-            className="
-              bg-blue-600
-              hover:bg-blue-700
-              disabled:bg-slate-700
-              px-8
-              rounded-xl
-              font-semibold
-            "
-          >
-            Send
-          </button>
+  <textarea
+    value={prompt}
+    onChange={(e) => setPrompt(e.target.value)}
+    onKeyDown={handleKeyDown}
+    placeholder="Ask anything..."
+    rows={1}
+    className="
+      flex-1
+      h-16
+      bg-slate-800
+      text-white
+      rounded-xl
+      px-4
+      py-4
+      resize-none
+      outline-none
+      border
+      border-slate-700
+      focus:border-blue-500
+    "
+  />
 
-        </div>
+  <button
+    onClick={() => sendPrompt(model)}
+    disabled={loading}
+    className="
+      h-16
+      min-w-[120px]
+      bg-blue-600
+      hover:bg-blue-700
+      disabled:bg-slate-700
+      rounded-xl
+      font-semibold
+"
+  >
+    Send
+  </button>
+
+</div>       
 
       </div>
 
