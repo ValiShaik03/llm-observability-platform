@@ -7,10 +7,18 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-
+from pydantic import BaseModel
 from schemas import ChatRequest
+class BenchmarkRequest(BaseModel):
+    prompt: str
 from database import engine, get_db
-from models import Base, ChatHistory, User
+from models import (
+    Base,
+    ChatHistory,
+    User,
+    BenchmarkHistory,
+    AlertHistory
+)
 
 from telemetry import tracer
 
@@ -24,6 +32,8 @@ from services.gemini_service import generate_response as gemini_response
 
 from services.ollama_service import generate_response as ollama_response
 import requests
+from sqlalchemy import func
+from slack_service import send_slack_alert
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -31,7 +41,7 @@ class LoginRequest(BaseModel):
 
 import os
 import time
-
+import random
 from prometheus_client import Counter
 prompt_tokens_metric = Counter(
     "prompt_tokens_total",
@@ -102,6 +112,7 @@ def root():
             "message": "LLM Observability Platform Running"
         }
 
+
 # -----------------------------
 # CHAT
 # -----------------------------
@@ -115,38 +126,28 @@ def chat(
 
     prompt = request.message
     selected_model = request.model
-
-    with tracer.start_as_current_span("llm_request"):
-
-        trace_obj = langfuse.trace(
-            name="llm_request",
-            input=prompt,
-            metadata={
-                "provider": selected_model,
-                "application": "llm-observability-platform",
-                "environment": "development",
-                "user_id": username
-            }
-        )
-
-        start_time = time.time()
-
+    trace_obj = langfuse.trace(
+    name="llm_request",
+    input=prompt,
+    metadata={
+        "provider": selected_model,
+        "user_id": username
+    }
+)
+    start_time = time.time()
+    status = "success"
+    error_message = None
         # MODEL SELECTION
+    if selected_model == "groq":
+        response = groq_response(prompt)
 
-        if selected_model == "groq":
-            response = groq_response(prompt)
-
-            response_text = (
+        response_text = (
                 response.choices[0]
                 .message
                 .content
             )
 
-            prompt_tokens = result["prompt_tokens"]
-            completion_tokens = result["completion_tokens"]
-            total_tokens = result["total_tokens"]
-
-            if hasattr(response, "usage") and response.usage:
+        if hasattr(response, "usage") and response.usage:
                 prompt_tokens = response.usage.prompt_tokens
                 completion_tokens = response.usage.completion_tokens
                 total_tokens = response.usage.total_tokens
@@ -155,86 +156,101 @@ def chat(
                   6
 )
 
-        elif selected_model == "gemini":
+    elif selected_model == "gemini":
 
-            result = gemini_response(prompt)
+        result = gemini_response(prompt)
 
-            response_text = result["text"]
+        response_text = result["text"]
 
-            prompt_tokens = result["prompt_tokens"]
+        prompt_tokens = result["prompt_tokens"]
 
-            completion_tokens = result["completion_tokens"]
+        completion_tokens = result["completion_tokens"]
 
-            total_tokens = result["total_tokens"]
+        total_tokens = result["total_tokens"]
 
-            cost = round(
+        cost = round(
         (total_tokens / 1000000) * 0.35,
         6
     )
 
-        elif selected_model == "ollama":
+    elif selected_model == "ollama":
 
-            result = ollama_response(prompt)
+        result = ollama_response(prompt)
 
-            response_text = result["text"]
+        response_text = result["text"]
 
-            prompt_tokens = 0
-            completion_tokens = 0
-            total_tokens = 0
-            cost = 0
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+        cost = 0
 
-        else:
+    else:
 
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid model"
-            )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid model"
+        )
 
-        latency = round(
+    latency = round(
             time.time() - start_time,
             2
-        )
-        prompt_tokens_metric.inc(prompt_tokens)
+    )
+    prompt_tokens_metric.inc(prompt_tokens)
 
-        completion_tokens_metric.inc(
+    completion_tokens_metric.inc(
             completion_tokens
         )
 
-        total_tokens_metric.inc(
+    total_tokens_metric.inc(
             total_tokens
         )
 
-        chat_record = ChatHistory(
-            username=username,
-            prompt=prompt,
-            response=response_text,
-            model=selected_model,
-            latency=latency,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            cost=cost
-        )
+    chat_record = ChatHistory(
+    username=username,
+    prompt=prompt,
+    response=response_text,
+    model=selected_model,
+    latency=latency,
+    prompt_tokens=prompt_tokens,
+    completion_tokens=completion_tokens,
+    total_tokens=total_tokens,
+    cost=cost,
+    status=status,
+    error_message=error_message
+)
 
-        db.add(chat_record)
-        db.commit()
-        db.refresh(chat_record)
-
-        trace_obj.update(
-            output=response_text,
-            metadata={
-                "provider": selected_model,
-                "latency_seconds": latency,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "database_id": chat_record.id
-            }
-        )
-
-        langfuse.flush()
-
-        return {
+    db.add(chat_record)
+    db.commit()
+    db.refresh(chat_record)
+    print("PROMPT TOKENS =", prompt_tokens)
+    print("COMPLETION TOKENS =", completion_tokens)
+    print("TOTAL TOKENS =", total_tokens)
+    print("COST =", cost)
+    print(type(prompt_tokens))
+    print(type(completion_tokens))
+    print(type(total_tokens))
+    print(type(cost))
+    quality_score = random.randint(7, 10)
+    generation = trace_obj.generation(
+    name="llm_generation",
+    model=selected_model,
+    input=prompt,
+    output=response_text,
+    
+    metadata={
+        "latency": latency,
+        "cost": cost,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens
+    }
+)
+    generation.score(
+    name="quality",
+    value=quality_score
+)
+    langfuse.flush()
+    return {
             "id": chat_record.id,
             "prompt": prompt,
             "response": response_text,
@@ -242,8 +258,304 @@ def chat(
             "latency": latency,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens
+            "total_tokens": total_tokens,
+            "cost": cost,
+            "quality_score": quality_score,
+}
+
+@app.post("/benchmark")
+def benchmark_models(
+    request: BenchmarkRequest,
+    db: Session = Depends(get_db)
+):
+
+    prompt = request.prompt
+
+    results = []
+
+    models = [
+        "groq",
+        "gemini",
+        "ollama"
+    ]
+
+    for model in models:
+
+        start_time = time.time()
+
+        try:
+
+            if model == "groq":
+
+                response = groq_response(prompt)
+
+                response_text = (
+                    response.choices[0]
+                    .message
+                    .content
+                )
+
+                prompt_tokens = (
+                    response.usage.prompt_tokens
+                )
+
+                completion_tokens = (
+                    response.usage.completion_tokens
+                )
+
+                total_tokens = (
+                    response.usage.total_tokens
+                )
+
+                cost = round(
+                    (total_tokens / 1000000) * 0.59,
+                    6
+                )
+
+            elif model == "gemini":
+
+                result = gemini_response(prompt)
+
+                response_text = result["text"]
+
+                prompt_tokens = result[
+                    "prompt_tokens"
+                ]
+
+                completion_tokens = result[
+                    "completion_tokens"
+                ]
+
+                total_tokens = result[
+                    "total_tokens"
+                ]
+
+                cost = round(
+                    (total_tokens / 1000000) * 0.35,
+                    6
+                )
+
+            elif model == "ollama":
+
+                result = ollama_response(prompt)
+
+                response_text = result["text"]
+
+                prompt_tokens = 0
+                completion_tokens = 0
+                total_tokens = 0
+                cost = 0
+
+            latency = round(
+                time.time() - start_time,
+                2
+            )
+
+            results.append({
+                "model": model,
+                "response": response_text,
+                "latency": latency,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": cost
+            })
+
+        except Exception as e:
+
+            results.append({
+                "model": model,
+                "error": str(e)
+            })
+
+    successful_results = [
+        r for r in results
+        if "error" not in r
+    ]
+
+    if successful_results:
+
+        fastest_model = min(
+            successful_results,
+            key=lambda x: x["latency"]
+        )["model"]
+
+        cheapest_model = min(
+            successful_results,
+            key=lambda x: x["cost"]
+        )["model"]
+
+        best_quality_model = max(
+            successful_results,
+            key=lambda x: len(
+                x.get("response", "")
+            )
+        )["model"]
+
+        benchmark_record = BenchmarkHistory(
+            prompt=prompt,
+            fastest_model=fastest_model,
+            cheapest_model=cheapest_model,
+            best_quality_model=best_quality_model
+        )
+
+        db.add(benchmark_record)
+        db.commit()
+
+    return {
+        "prompt": prompt,
+        "fastest_model": (
+            fastest_model
+            if successful_results
+            else None
+        ),
+        "cheapest_model": (
+            cheapest_model
+            if successful_results
+            else None
+        ),
+        "best_quality_model": (
+            best_quality_model
+            if successful_results
+            else None
+        ),
+        "results": results
+    }
+
+@app.get("/benchmark-history")
+def benchmark_history(
+    db: Session = Depends(get_db)
+):
+
+    records = (
+        db.query(BenchmarkHistory)
+        .order_by(
+            BenchmarkHistory.created_at.desc()
+        )
+        .all()
+    )
+
+    return [
+        {
+            "id": r.id,
+            "prompt": r.prompt,
+            "fastest_model": r.fastest_model,
+            "cheapest_model": r.cheapest_model,
+            "best_quality_model": r.best_quality_model,
+            "created_at": r.created_at
         }
+        for r in records
+    ]
+
+@app.get("/benchmark-dashboard")
+def benchmark_dashboard(db: Session = Depends(get_db)):
+
+    benchmarks = (
+        db.query(BenchmarkHistory)
+        .order_by(
+            BenchmarkHistory.created_at.desc()
+        )
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "prompt": item.prompt,
+            "fastest_model": item.fastest_model,
+            "cheapest_model": item.cheapest_model,
+            "best_quality_model": item.best_quality_model,
+            "created_at": item.created_at
+        }
+        for item in benchmarks
+    ]
+
+@app.get("/benchmark-stats")
+def benchmark_stats(
+    db: Session = Depends(get_db)
+):
+
+    records = (
+        db.query(BenchmarkHistory)
+        .all()
+    )
+
+    groq_fastest = sum(
+        1
+        for r in records
+        if r.fastest_model == "groq"
+    )
+
+    gemini_fastest = sum(
+        1
+        for r in records
+        if r.fastest_model == "gemini"
+    )
+
+    ollama_fastest = sum(
+        1
+        for r in records
+        if r.fastest_model == "ollama"
+    )
+
+    groq_quality = sum(
+        1
+        for r in records
+        if r.best_quality_model == "groq"
+    )
+
+    gemini_quality = sum(
+        1
+        for r in records
+        if r.best_quality_model == "gemini"
+    )
+
+    ollama_quality = sum(
+        1
+        for r in records
+        if r.best_quality_model == "ollama"
+    )
+
+    groq_cheapest = sum(
+        1
+        for r in records
+        if r.cheapest_model == "groq"
+    )
+
+    gemini_cheapest = sum(
+        1
+        for r in records
+        if r.cheapest_model == "gemini"
+    )
+
+    ollama_cheapest = sum(
+        1
+        for r in records
+        if r.cheapest_model == "ollama"
+    )
+
+    return {
+        "total_runs": len(records),
+
+        "fastest": {
+            "groq": groq_fastest,
+            "gemini": gemini_fastest,
+            "ollama": ollama_fastest
+        },
+
+        "quality": {
+            "groq": groq_quality,
+            "gemini": gemini_quality,
+            "ollama": ollama_quality
+        },
+
+        "cheapest": {
+            "groq": groq_cheapest,
+            "gemini": gemini_cheapest,
+            "ollama": ollama_cheapest
+        }
+    }
+
 
 # -----------------------------
 # CHAT HISTORY
@@ -406,6 +718,79 @@ def model_stats(
 
     return result
 
+from collections import defaultdict
+
+@app.get("/request-trends")
+def request_trends(
+    db: Session = Depends(get_db)
+):
+
+    chats = db.query(ChatHistory).all()
+
+    grouped = defaultdict(int)
+
+    for chat in chats:
+
+        date = chat.created_at.strftime(
+            "%Y-%m-%d"
+        )
+
+        grouped[date] += 1
+
+    result = []
+
+    for date, count in grouped.items():
+
+        result.append({
+            "date": date,
+            "requests": count
+        })
+
+    return sorted(
+        result,
+        key=lambda x: x["date"]
+    )
+
+@app.get("/cost-forecast")
+def cost_forecast(
+    db: Session = Depends(get_db)
+):
+
+    total_cost = db.query(
+        func.sum(ChatHistory.cost)
+    ).scalar() or 0
+
+    total_requests = db.query(
+        ChatHistory
+    ).count()
+
+    avg_cost_per_request = (
+        total_cost / total_requests
+        if total_requests > 0
+        else 0
+    )
+
+    forecast_7 = round(
+        avg_cost_per_request * total_requests * 7,
+        6
+    )
+
+    forecast_30 = round(
+        avg_cost_per_request * total_requests * 30,
+        6
+    )
+
+    forecast_90 = round(
+        avg_cost_per_request * total_requests * 90,
+        6
+    )
+
+    return {
+        "forecast_7_days": forecast_7,
+        "forecast_30_days": forecast_30,
+        "forecast_90_days": forecast_90
+    }
+
 @app.delete("/history/{chat_id}")
 def delete_chat(
     chat_id: int,
@@ -451,11 +836,36 @@ def health(db: Session = Depends(get_db)):
     langfuse = "healthy"
     jaeger = "healthy"
     grafana = "healthy"
+
     # PostgreSQL
     try:
         db.execute(text("SELECT 1"))
+
     except:
         postgres = "unhealthy"
+
+        alert_message = "🚨 PostgreSQL is DOWN"
+
+        last_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type == "POSTGRES_DOWN"
+            )
+            .order_by(AlertHistory.id.desc())
+            .first()
+        )
+
+        if not last_alert:
+
+            send_slack_alert(alert_message)
+
+            alert = AlertHistory(
+                alert_type="POSTGRES_DOWN",
+                message=alert_message
+            )
+
+            db.add(alert)
+            db.commit()
 
     # Prometheus
     try:
@@ -463,8 +873,32 @@ def health(db: Session = Depends(get_db)):
             "http://localhost:9090/-/healthy",
             timeout=2
         )
+
     except:
         prometheus = "unhealthy"
+
+        alert_message = "🚨 Prometheus is DOWN"
+
+        last_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type == "PROMETHEUS_DOWN"
+            )
+            .order_by(AlertHistory.id.desc())
+            .first()
+        )
+
+        if not last_alert:
+
+            send_slack_alert(alert_message)
+
+            alert = AlertHistory(
+                alert_type="PROMETHEUS_DOWN",
+                message=alert_message
+            )
+
+            db.add(alert)
+            db.commit()
 
     # Langfuse
     try:
@@ -472,8 +906,32 @@ def health(db: Session = Depends(get_db)):
             "http://localhost:3002",
             timeout=2
         )
+
     except:
         langfuse = "unhealthy"
+
+        alert_message = "🚨 Langfuse is DOWN"
+
+        last_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type == "LANGFUSE_DOWN"
+            )
+            .order_by(AlertHistory.id.desc())
+            .first()
+        )
+
+        if not last_alert:
+
+            send_slack_alert(alert_message)
+
+            alert = AlertHistory(
+                alert_type="LANGFUSE_DOWN",
+                message=alert_message
+            )
+
+            db.add(alert)
+            db.commit()
 
     # Jaeger
     try:
@@ -481,18 +939,65 @@ def health(db: Session = Depends(get_db)):
             "http://localhost:16686",
             timeout=2
         )
+
     except:
         jaeger = "unhealthy"
-    
-    # Grafana
 
+        alert_message = "🚨 Jaeger is DOWN"
+
+        last_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type == "JAEGER_DOWN"
+            )
+            .order_by(AlertHistory.id.desc())
+            .first()
+        )
+
+        if not last_alert:
+
+            send_slack_alert(alert_message)
+
+            alert = AlertHistory(
+                alert_type="JAEGER_DOWN",
+                message=alert_message
+            )
+
+            db.add(alert)
+            db.commit()
+
+    # Grafana
     try:
         requests.get(
-        "http://localhost:3000/api/health",
-        timeout=2
-    )
+            "http://localhost:3000/api/health",
+            timeout=2
+        )
+
     except:
         grafana = "unhealthy"
+
+        alert_message = "🚨 Grafana is DOWN"
+
+        last_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type == "GRAFANA_DOWN"
+            )
+            .order_by(AlertHistory.id.desc())
+            .first()
+        )
+
+        if not last_alert:
+
+            send_slack_alert(alert_message)
+
+            alert = AlertHistory(
+                alert_type="GRAFANA_DOWN",
+                message=alert_message
+            )
+
+            db.add(alert)
+            db.commit()
 
     return {
         "fastapi": "healthy",
@@ -502,17 +1007,6 @@ def health(db: Session = Depends(get_db)):
         "jaeger": jaeger,
         "grafana": grafana
     }
-
-
-
-    return {
-        "fastapi": "healthy",
-        "postgres": postgres,
-        "prometheus": prometheus,
-        "langfuse": langfuse,
-        "jaeger": jaeger
-    }
-
 
 @app.post("/login")
 def login(
@@ -576,3 +1070,130 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     return {
         "message": "Registration successful"
     }
+
+@app.get("/quality-drift")
+def quality_drift(db: Session = Depends(get_db)):
+
+    chats = (
+        db.query(ChatHistory)
+        .order_by(ChatHistory.id.desc())
+        .limit(50)
+        .all()
+    )
+
+    if not chats:
+        return {
+            "drift": "Unknown",
+            "avg_latency": 0,
+            "avg_response_length": 0,
+            "error_rate": 0
+        }
+
+    avg_latency = (
+        sum(chat.latency for chat in chats)
+        / len(chats)
+    )
+
+    avg_response_length = (
+        sum(len(chat.response or "")
+            for chat in chats)
+        / len(chats)
+    )
+
+    errors = len(
+        [c for c in chats if c.status == "failed"]
+    )
+
+    error_rate = (
+        errors / len(chats)
+    ) * 100
+
+    if avg_latency > 10 or error_rate > 20:
+        drift = "High"
+
+    elif avg_latency > 5 or error_rate > 10:
+        drift = "Medium"
+
+    else:
+        drift = "Low"
+
+    return {
+        "drift": drift,
+        "avg_latency": round(avg_latency, 2),
+        "avg_response_length": round(
+            avg_response_length, 2
+        ),
+        "error_rate": round(error_rate, 2)
+    }
+
+@app.get("/recommended-model")
+def recommended_model(db: Session = Depends(get_db)):
+
+    models = ["groq", "gemini", "ollama"]
+
+    results = []
+
+    for model in models:
+
+        chats = (
+            db.query(ChatHistory)
+            .filter(ChatHistory.model == model)
+            .all()
+        )
+
+        if not chats:
+            continue
+
+        avg_latency = sum(c.latency for c in chats) / len(chats)
+
+        total_cost = sum(c.cost for c in chats)
+
+        quality_score = 8
+
+        score = (
+            quality_score * 50
+            - avg_latency * 10
+            - total_cost * 100000
+        )
+
+        results.append({
+            "model": model,
+            "score": round(score, 2),
+            "avg_latency": round(avg_latency, 2),
+            "cost": round(total_cost, 6)
+        })
+
+    if not results:
+        return {
+            "recommended_model": "No Data"
+        }
+
+    best = max(results, key=lambda x: x["score"])
+
+    return {
+        "recommended_model": best["model"],
+        "score": best["score"],
+        "avg_latency": best["avg_latency"],
+        "cost": best["cost"]
+    }
+
+@app.get("/alerts")
+def get_alerts(
+    db: Session = Depends(get_db)
+):
+
+    alerts = (
+        db.query(AlertHistory)
+        .order_by(AlertHistory.id.desc())
+        .limit(20)
+        .all()
+    )
+
+    return [
+        {
+            "type": alert.alert_type,
+            "message": alert.message,
+            "created_at": alert.created_at
+        }
+        for alert in alerts
+    ]

@@ -5,64 +5,50 @@ import axios from "axios";
   TEST HEALTH PAGE
 </h1>
 
-export default function HealthPage() {
+// src/pages/HealthPage.js
 
-  const [health, setHealth] = useState({});
+export default function HealthPage({ health }) {
 
-  useEffect(() => {
-
-    const fetchHealth = async () => {
-
-      try {
-
-        const res = await axios.get(
-          "http://127.0.0.1:8000/health"
-        );
-
-        setHealth(res.data);
-
-      } catch (err) {
-
-        console.error(err);
-
-      }
-    };
-
-    fetchHealth();
-
-    const interval = setInterval(
-      fetchHealth,
-      5000
-    );
-
-    return () => clearInterval(interval);
-
-  }, []);
+  const getStatusColor = (status) =>
+    status === "healthy"
+      ? "text-green-400"
+      : "text-red-400";
 
   return (
+    <div className="flex-1 p-8 overflow-y-auto">
 
-    <div className="flex-1 p-8">
+      <h2 className="text-4xl font-bold mb-8">
+        System Health
+      </h2>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="bg-slate-800 rounded-3xl p-6">
 
-        {Object.entries(health).map(
+        {Object.entries(health || {}).map(
           ([service, status]) => (
 
-            <div
-              key={service}
-              className="bg-slate-800 p-8 rounded-3xl"
-            >
+          <div
+            key={service}
+            className="
+              flex
+              justify-between
+              py-3
+              border-b
+              border-slate-700
+            "
+          >
+            <span className="capitalize">
+              {service}
+            </span>
 
-              <h3 className="text-slate-400 mb-2 capitalize">
-                {service}
-              </h3>
-              <span className="text-red-500 text-2xl">
-  🔴 unhealthy
-</span>
+            <span className={getStatusColor(status)}>
+              {status === "healthy"
+                ? "🟢 Healthy"
+                : "🔴 Unhealthy"}
+            </span>
 
-            </div>
-          )
-        )}
+          </div>
+
+        ))}
 
       </div>
 

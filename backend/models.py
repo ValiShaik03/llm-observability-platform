@@ -25,6 +25,35 @@ class ChatHistory(Base):
     total_tokens = Column(Integer, default=0)
     cost = Column(Float, default=0)
 
+    status = Column(String, default="success")
+    error_message = Column(String, nullable=True)
+
+class BenchmarkHistory(Base):
+    __tablename__ = "benchmark_history"
+
+    id = Column(Integer, primary_key=True)
+    prompt = Column(Text)
+
+    fastest_model = Column(String)
+    cheapest_model = Column(String)
+    best_quality_model = Column(String)
+
+    created_at = Column(DateTime)
+
+class AlertHistory(Base):
+    __tablename__ = "alert_history"
+
+    id = Column(Integer, primary_key=True)
+
+    alert_type = Column(String)
+
+    message = Column(Text)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
 class User(Base):
 
     __tablename__ = "users"

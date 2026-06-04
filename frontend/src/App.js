@@ -5,6 +5,13 @@ import ChatPage from "./pages/ChatPage";
 import Dashboard from "./pages/Dashboard";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import BenchmarkAnalyticsPage from "./pages/BenchmarkAnalyticsPage";
+import CostPage from "./pages/CostPage";
+import QualityPage from "./pages/QualityPage";
+import AlertPage from "./pages/AlertPage";
+import ObservabilityPage from "./pages/ObservabilityPage";
+import HealthPage from "./pages/HealthPage";
+
 function App() {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
@@ -28,24 +35,47 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(
   localStorage.getItem("loggedIn") === "true"
 );
+  const [alerts, setAlerts] = useState([]);
+  const [trendData, setTrendData] = useState([]);
+  const [forecast, setForecast] =
+  useState({});
+  const [quality, setQuality] =
+  useState({});
+  
   useEffect(() => {
 
   fetchHistory();
   fetchStats();
   fetchHealth();
   fetchModelStats();
-
+  fetchTrendData();
+  fetchForecast();
+  fetchQuality();
+  fetchBenchmarkStats();
+  fetchRecommendedModel();
+  fetchBenchmarkHistory();
 
   const interval = setInterval(() => {
     fetchStats();
     fetchHealth();
     fetchModelStats();
+    fetchTrendData();
+    fetchQuality();
+    fetchBenchmarkStats();
+    fetchRecommendedModel();
+    fetchAlerts();
   }, 5000);
 
   return () => clearInterval(interval);
 
 }, []);
 
+const [benchmarkStats, setBenchmarkStats] =
+  useState(null);
+const [recommendedModel, setRecommendedModel] =
+  useState(null);
+const [benchmarkHistory,
+setBenchmarkHistory] = useState([]);
   const fetchStats = async () => {
     try {
       const res = await axios.get("http://127.0.0.1:8000/stats");
@@ -105,6 +135,144 @@ const fetchModelStats = async () => {
 
 };
 
+const fetchTrendData = async () => {
+
+  try {
+
+    const res = await axios.get(
+      "http://127.0.0.1:8000/request-trends"
+    );
+
+    setTrendData(res.data);
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+
+};
+
+const fetchForecast = async () => {
+
+  try {
+
+    const res = await axios.get(
+      "http://127.0.0.1:8000/cost-forecast"
+    );
+
+    setForecast(res.data);
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+
+};
+
+const fetchQuality = async () => {
+
+  try {
+
+    const res = await axios.get(
+      "http://127.0.0.1:8000/quality-drift"
+    );
+
+    setQuality(res.data);
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+};
+
+const fetchBenchmarkStats = async () => {
+
+  try {
+
+    const res = await axios.get(
+      "http://127.0.0.1:8000/benchmark-stats"
+    );
+
+    setBenchmarkStats(res.data);
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+
+};
+
+const fetchRecommendedModel = async () => {
+  try {
+
+    const response = await fetch(
+      "http://127.0.0.1:8000/recommended-model"
+    );
+
+    const data = await response.json();
+
+    setRecommendedModel(data);
+
+  } catch (error) {
+
+    console.error(
+      "Recommended model error:",
+      error
+    );
+
+  }
+};
+
+const fetchBenchmarkHistory =
+async () => {
+
+  try {
+
+    const response =
+      await fetch(
+        "http://localhost:8000/benchmark-dashboard"
+      );
+
+    const data =
+      await response.json();
+
+    setBenchmarkHistory(data);
+
+  } catch (error) {
+
+    console.error(
+      "Benchmark history error",
+      error
+    );
+
+  }
+
+};
+
+const fetchAlerts = async () => {
+
+  try {
+
+    const response = await fetch(
+      "http://127.0.0.1:8000/alerts"
+    );
+
+    const data = await response.json();
+
+    setAlerts(data);
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+
+};
+
   const loadChat = async (chatId) => {
     try {
       const res = await axios.get(
@@ -140,17 +308,28 @@ const fetchModelStats = async () => {
   }
 );
 
-      setMessages((prev) => [
+console.log("================================");
+console.log("selectedModel =", selectedModel);
+console.log("response =", res);
+console.log("response.data =", res?.data);
+console.log("================================");
+
+if (!res.data) {
+  alert("Backend returned null");
+  return;
+}
+
+setMessages((prev) => [
   ...prev,
   {
     role: "user",
     content: prompt,
   },
   {
-  role: "assistant",
-  content: res.data.response,
-  model: res.data.model
-}
+    role: "assistant",
+    content: res.data.response || "No response received",
+    model: res.data.model || selectedModel
+  }
 ]);
 
 // Add session to sidebar only once
@@ -210,15 +389,12 @@ if (!loggedIn) {
   return (
     <div className="flex h-screen bg-slate-950 text-white">
 
-      {/* Sidebar */}
+ {/* Sidebar */}
 <div
   className={`
-    ${
-      sidebarOpen ? "w-80" : "w-24"
-    }
-    flex-shrink-0
+    ${sidebarOpen ? "w-72" : "w-24"}
+    h-screen
     bg-slate-900
-    p-4
     border-r
     border-slate-800
     flex
@@ -227,221 +403,218 @@ if (!loggedIn) {
     duration-300
   `}
 >
-  <button
-  onClick={() =>
-    setSidebarOpen(!sidebarOpen)
-  }
-  className="
-    bg-slate-800
-    p-3
-    rounded-xl
-    mb-4
-  "
->
-  ☰
-</button>
-{sidebarOpen && (
-  <h1 className="text-3xl font-bold mb-6">
-    LLM Platform
-  </h1>
-)}
-<button
-  onClick={() => {
-  setCurrentSessionId(Date.now());
-  setMessages([]);
-  setPrompt("");
-  setSelectedChatId(null);
-  setActivePage("chat");
-}}
-  className="bg-blue-600 hover:bg-blue-700 p-4 rounded-xl font-semibold mb-6"
->
-  {sidebarOpen ? "+ New Chat" : "➕"}
-</button>
-<button
-  onClick={async () => {
-  if (window.confirm("Delete all chat history?")) {
 
-    try {
+  {/* Fixed Top */}
+  <div className="p-4 flex-shrink-0">
 
-      await axios.delete(
-        "http://127.0.0.1:8000/history"
-      );
+    <button
+      onClick={() => setSidebarOpen(!sidebarOpen)}
+      className="w-full bg-slate-800 p-3 rounded-xl mb-4"
+    >
+      ☰
+    </button>
 
-      setHistory([]);
-      setMessages([]);
-      setSelectedChatId(null);
-      await fetchStats();
-      setToast("🗑 All chats deleted");
+    {sidebarOpen && (
+      <h1 className="text-3xl font-bold mb-6">
+        LLM Platform
+      </h1>
+    )}
 
-      setTimeout(() => {
-        setToast("");
-      }, 2000);
+    <button
+      onClick={() => {
+        setCurrentSessionId(Date.now());
+        setMessages([]);
+        setPrompt("");
+        setSelectedChatId(null);
+        setActivePage("chat");
+      }}
+      className="w-full bg-blue-600 hover:bg-blue-700 p-4 rounded-xl font-semibold mb-4"
+    >
+      {sidebarOpen ? "+ New Chat" : "➕"}
+    </button>
 
-    } catch (error) {
-      console.log(error);
-    }
-  }
-}}
+    <button
+      className="w-full bg-red-600 hover:bg-red-700 p-4 rounded-xl font-semibold"
+    >
+      {sidebarOpen ? "🗑 Clear History" : "🗑"}
+    </button>
 
-  className="
+  </div>
+
+  {/* Scrollable Middle */}
+  <div className="flex-1 overflow-y-auto px-4">
+
+    <div className="space-y-3 mb-6">
+
+      <button
+  onClick={() => setActivePage("dashboard")}
+  className={`
     w-full
-    bg-red-600
-    hover:bg-red-700
+    bg-slate-800
+    hover:bg-slate-700
     p-4
     rounded-xl
-    font-semibold
-    mb-6
-  "
->
-  {sidebarOpen ? "🗑 Clear History" : "🗑"}
-</button>
-  <div className="space-y-3 mb-6">
-<button
-  onClick={() => setActivePage("dashboard")}
-  className="w-full bg-slate-800 hover:bg-slate-700 p-4 rounded-xl text-left mb-3"
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
 >
   {sidebarOpen ? "📊 Dashboard" : "📊"}
 </button>
-</div>
-  {sidebarOpen && (
-  <input
-    type="text"
-    placeholder="🔍 Search chats..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="
-      w-full
-      bg-slate-800
-      text-white
-      p-3
-      rounded-xl
-      mb-4
-      border
-      border-slate-700
-      outline-none
-    "
-  />
-)}
 
-  {sidebarOpen && (
-  <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-3 pr-2">
+      <button
+  onClick={() => setActivePage("benchmarkAnalytics")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "📈 Benchmark Analytics" : "📈"}
+</button>
 
-    {filteredHistory.map((chat) => (
-      <div
-        key={chat.id}
-        className={`
-          group
-          w-full
-          overflow-hidden
-          p-4
-          rounded-xl
-          ${
-            selectedChatId === chat.id
-              ? "bg-blue-600"
-              : "bg-slate-800 hover:bg-slate-700"
-          }
-        `}
-      >
-        <div className="flex justify-between items-start">
+     <button
+  onClick={() => setActivePage("cost")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "💰 Cost" : "💰"}
+</button>
 
+      <button
+  onClick={() => setActivePage("quality")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "🧠 Quality" : "🧠"}
+</button>
+
+      <button
+  onClick={() => setActivePage("alerts")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "🚨 Alerts" : "🚨"}
+</button>
+
+      <button
+  onClick={() => setActivePage("observability")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "🔍 Observability" : "🔍"}
+</button>
+
+      <button
+  onClick={() => setActivePage("health")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "⚙️ Health" : "⚙️"}
+</button>
+
+    </div>
+
+    {sidebarOpen && (
+      <div className="space-y-3 pb-4">
+        {filteredHistory.map((chat) => (
           <div
-            className="flex-1 cursor-pointer"
-            onClick={() => {
-              setSelectedChatId(chat.id);
-              setActivePage("chat");
-              loadChat(chat.id);
-            }}
+            key={chat.id}
+            className="bg-slate-800 p-3 rounded-xl"
           >
-            <div className="font-semibold truncate">
+            <div className="truncate">
               {chat.prompt}
             </div>
-
-            <div className="text-xs text-slate-300 mt-2">
-              {new Date(chat.created_at).toLocaleString()}
-            </div>
           </div>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-
-              const newName = window.prompt(
-                "Rename conversation",
-                chat.prompt
-              );
-
-              if (!newName) return;
-
-              setHistory((prev) =>
-                prev.map((item) =>
-                  item.id === chat.id
-                    ? { ...item, prompt: newName }
-                    : item
-                )
-              );
-
-              setToast("✏️ Conversation renamed");
-              setTimeout(() => setToast(""), 2000);
-            }}
-            className="
-              opacity-0
-              group-hover:opacity-100
-              mr-2
-              text-yellow-400
-              hover:text-yellow-300
-              transition
-            "
-          >
-            ✏️
-          </button>
-
-          <button
-            onClick={async (e) => {
-  e.stopPropagation();
-
-  try {
-
-    await axios.delete(
-      `http://127.0.0.1:8000/history/${chat.id}`
-    );
-
-    setHistory((prev) =>
-      prev.filter(
-        (item) => item.id !== chat.id
-      )
-    );
-    await fetchStats();
-    setToast("🗑 Conversation deleted");
-
-    setTimeout(() => {
-      setToast("");
-    }, 2000);
-
-  } catch (error) {
-    console.log(error);
-  }
-}}
-            className="
-              opacity-0
-              group-hover:opacity-100
-              ml-3
-              text-red-400
-              hover:text-red-300
-              transition
-            "
-          >
-            🗑
-          </button>
-
-        </div>
+        ))}
       </div>
-    ))}
+    )}
 
   </div>
-)}
-</div>
 
-{/* Main Content */}
+  {/* Fixed Bottom */}
+  {sidebarOpen && (
+    <div className="p-4 border-t border-slate-800 flex-shrink-0">
+      <input
+        type="text"
+        placeholder="🔍 Search chats..."
+        value={searchTerm}
+        onChange={(e) =>
+          setSearchTerm(e.target.value)
+        }
+        className="
+          w-full
+          bg-slate-800
+          text-white
+          p-3
+          rounded-xl
+          border
+          border-slate-700
+        "
+      />
+    </div>
+  )}
+
+</div>
 <div className="flex-1 flex flex-col p-8">
 
   {/* Header */}
@@ -486,7 +659,7 @@ if (!loggedIn) {
 
 </div>
 
-        {activePage === "chat" ? (
+        {activePage === "chat" && (
   <ChatPage
     messages={messages}
     loading={loading}
@@ -495,11 +668,67 @@ if (!loggedIn) {
     sendPrompt={sendPrompt}
     setToast={setToast}
   />
-) : (
-  <Dashboard 
-  stats={stats}
-  health={health}
-  modelStats={modelStats} />
+)}
+
+{activePage === "dashboard" && (
+  <Dashboard
+    stats={stats}
+    health={health}
+    modelStats={modelStats}
+    trendData={trendData}
+    forecast={forecast}
+    quality={quality}
+    benchmarkStats={benchmarkStats}
+    recommendedModel={recommendedModel}
+    benchmarkHistory={benchmarkHistory}
+    alerts={alerts}
+  />
+)}
+
+{
+  activePage ===
+    "benchmarkAnalytics" && (
+
+    <BenchmarkAnalyticsPage
+      benchmarkHistory={
+        benchmarkHistory
+      }
+    />
+)
+}
+
+{
+  activePage === "cost" && (
+    <CostPage
+      stats={stats}
+      forecast={forecast}
+      modelStats={modelStats}
+    />
+  )
+}
+
+{activePage === "quality" && (
+  <QualityPage
+    benchmarkStats={benchmarkStats}
+    recommendedModel={recommendedModel}
+  />
+)}
+
+{activePage === "alerts" && (
+  <AlertPage
+    alerts={alerts}
+  />
+)}
+{activePage === "observability" && (
+  <ObservabilityPage
+    health={health}
+    stats={stats}
+  />
+)}
+{activePage === "health" && (
+  <HealthPage
+    health={health}
+  />
 )}
       </div>
       {toast && (
