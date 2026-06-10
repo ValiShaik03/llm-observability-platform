@@ -11,6 +11,9 @@ import QualityPage from "./pages/QualityPage";
 import AlertPage from "./pages/AlertPage";
 import ObservabilityPage from "./pages/ObservabilityPage";
 import HealthPage from "./pages/HealthPage";
+import PromptRegistryPage from "./pages/PromptRegistryPage";
+import PromptAnalyticsPage from "./pages/PromptAnalyticsPage";
+import ABTestingPage from "./pages/ABTestingPage";
 
 function App() {
   const [prompt, setPrompt] = useState("");
@@ -294,7 +297,10 @@ const fetchAlerts = async () => {
     }
   };
 
-  const sendPrompt = async (selectedModel = "groq") => {
+  const sendPrompt = async (
+  selectedModel = "groq",
+  selectedTemplate = "Summarizer"
+) => {
     if (!prompt.trim()) return;
 
     setLoading(true);
@@ -304,8 +310,19 @@ const fetchAlerts = async () => {
   `http://127.0.0.1:8000/chat?username=${localStorage.getItem("username")}`,
   {
     message: prompt,
-    model: selectedModel
+    model: selectedModel,
+    template: selectedTemplate
   }
+);
+
+console.log(
+  "Template Used:",
+  selectedTemplate
+);
+
+console.log(
+  "Backend Response:",
+  res.data
 );
 
 console.log("================================");
@@ -387,7 +404,7 @@ if (!loggedIn) {
   );
 }
   return (
-    <div className="flex h-screen bg-slate-950 text-white">
+    <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
  {/* Sidebar */}
 <div
@@ -517,6 +534,60 @@ if (!loggedIn) {
 >
   {sidebarOpen ? "🧠 Quality" : "🧠"}
 </button>
+       
+      <button
+  onClick={() => setActivePage("promptRegistry")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "📋 Prompt Registry" : "📋"}
+</button>
+      
+       <button
+  onClick={() => setActivePage("promptAnalytics")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "📊 Prompt Analytics" : "📊"}
+</button>
+      
+      <button
+  onClick={() => setActivePage("abTesting")}
+  className={`
+    w-full
+    bg-slate-800
+    hover:bg-slate-700
+    p-4
+    rounded-xl
+    ${
+      sidebarOpen
+        ? "text-left"
+        : "flex items-center justify-center"
+    }
+  `}
+>
+  {sidebarOpen ? "🧪 A/B Testing" : "🧪"}
+</button>
 
       <button
   onClick={() => setActivePage("alerts")}
@@ -533,6 +604,9 @@ if (!loggedIn) {
     }
   `}
 >
+
+   
+
   {sidebarOpen ? "🚨 Alerts" : "🚨"}
 </button>
 
@@ -615,7 +689,7 @@ if (!loggedIn) {
   )}
 
 </div>
-<div className="flex-1 flex flex-col p-8">
+<div className="flex-1 flex flex-col p-8 overflow-y-auto">
 
   {/* Header */}
   <div className="flex justify-between items-center mb-6">
@@ -711,7 +785,12 @@ if (!loggedIn) {
   <QualityPage
     benchmarkStats={benchmarkStats}
     recommendedModel={recommendedModel}
+    quality={quality}
   />
+)}
+
+{activePage === "promptRegistry" && (
+  <PromptRegistryPage />
 )}
 
 {activePage === "alerts" && (
@@ -719,6 +798,15 @@ if (!loggedIn) {
     alerts={alerts}
   />
 )}
+
+{activePage === "promptAnalytics" && (
+  <PromptAnalyticsPage />
+)}
+
+{activePage === "abTesting" && (
+  <ABTestingPage />
+)}
+
 {activePage === "observability" && (
   <ObservabilityPage
     health={health}

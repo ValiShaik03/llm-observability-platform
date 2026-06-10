@@ -90,6 +90,30 @@ export default function Sidebar({
           >
             🧠 Quality Monitor
           </button>
+          
+          <button
+          onClick={() => setActivePage("prompt-registry")}
+          className={menuClass("prompt-registry")}
+          >
+          📋 Prompt Registry
+          </button>
+
+          <button
+          onClick={() =>
+            setActivePage("promptAnalytics")
+        }
+          className={menuClass("promptAnalytics")}
+        >
+        📊 Prompt Analytics
+        </button>
+        
+        <button
+        onClick={() => setActivePage("abTesting")}
+        className={menuClass("abTesting")}
+        >
+          🧪 A/B Testing
+          
+        </button>
 
           <button
             onClick={() => setActivePage("alerts")}

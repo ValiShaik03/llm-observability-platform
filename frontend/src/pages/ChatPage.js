@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import { useState, useEffect, useRef } from "react";
+import axios from "axios";
 export default function ChatPage({
   messages,
   loading,
@@ -11,17 +12,49 @@ export default function ChatPage({
   const [copiedIndex, setCopiedIndex] = useState(null);
   const messagesEndRef = useRef(null);
   const [model, setModel] = useState("groq");
-useEffect(() => {
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] =
+  useState("Summarizer");
+  useEffect(() => {
   messagesEndRef.current?.scrollIntoView({
     behavior: "smooth",
   });
 }, [messages]);
+
+useEffect(() => {
+
+  axios
+    .get("http://localhost:8000/templates")
+    .then((res) => {
+
+      setTemplates(res.data);
+
+    })
+    .catch(console.error);
+
+}, []);
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendPrompt(model);
-    }
-  };
+
+  if (
+    e.key === "Enter" &&
+    !e.shiftKey
+  ) {
+
+    e.preventDefault();
+
+    console.log(
+      "Selected Template:",
+      selectedTemplate
+    );
+
+    sendPrompt(
+      model,
+      selectedTemplate
+    );
+
+  }
+
+};
   
 
   return (
@@ -114,16 +147,18 @@ useEffect(() => {
 
       </div>
 
-      {/* Input Area */}
+{/* Input Area */}
 
-      <div className="border-t border-slate-800 p-6">
+<div className="border-t border-slate-800 p-6">
 
-        <div className="flex gap-4 items-center">
+  <div className="flex gap-4 items-center">
 
-  <select
-    value={model}
-    onChange={(e) => setModel(e.target.value)}
-    className="
+    {/* Model Dropdown */}
+
+    <select
+      value={model}
+      onChange={(e) => setModel(e.target.value)}
+      className="
         h-16
         bg-slate-800
         text-white
@@ -131,54 +166,96 @@ useEffect(() => {
         border-slate-700
         rounded-xl
         px-4
-"
+      "
+    >
+      <option value="groq">Groq</option>
+      <option value="gemini">Gemini</option>
+      <option value="ollama">Ollama</option>
+    </select>
+
+    {/* Template Dropdown */}
+
+    <select
+      value={selectedTemplate}
+      onChange={(e) =>
+        setSelectedTemplate(
+          e.target.value
+        )
+      }
+      className="
+        h-16
+        bg-slate-800
+        text-white
+        border
+        border-slate-700
+        rounded-xl
+        px-4
+      "
+    >
+      {templates.map((template) => (
+
+  <option
+    key={`${template.name}-${template.version}`}
+    value={`${template.name}|${template.version}`}
   >
-    <option value="groq">Groq</option>
-    <option value="gemini">Gemini</option>
-    <option value="ollama">Ollama</option>
-  </select>
 
-  <textarea
-    value={prompt}
-    onChange={(e) => setPrompt(e.target.value)}
-    onKeyDown={handleKeyDown}
-    placeholder="Ask anything..."
-    rows={1}
-    className="
-      flex-1
-      h-16
-      bg-slate-800
-      text-white
-      rounded-xl
-      px-4
-      py-4
-      resize-none
-      outline-none
-      border
-      border-slate-700
-      focus:border-blue-500
-    "
-  />
+    {template.name} ({template.version})
 
-  <button
-    onClick={() => sendPrompt(model)}
-    disabled={loading}
-    className="
-      h-16
-      min-w-[120px]
-      bg-blue-600
-      hover:bg-blue-700
-      disabled:bg-slate-700
-      rounded-xl
-      font-semibold
-"
-  >
-    Send
-  </button>
+  </option>
 
-</div>       
+))}
+    </select>
 
-      </div>
+    {/* Prompt Input */}
+
+    <textarea
+      value={prompt}
+      onChange={(e) => setPrompt(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder="Ask anything..."
+      rows={1}
+      className="
+        flex-1
+        h-16
+        bg-slate-800
+        text-white
+        rounded-xl
+        px-4
+        py-4
+        resize-none
+        outline-none
+        border
+        border-slate-700
+        focus:border-blue-500
+      "
+    />
+
+    {/* Send Button */}
+
+    <button
+      onClick={() =>
+        sendPrompt(
+          model,
+          selectedTemplate
+        )
+      }
+      disabled={loading}
+      className="
+        h-16
+        min-w-[120px]
+        bg-blue-600
+        hover:bg-blue-700
+        disabled:bg-slate-700
+        rounded-xl
+        font-semibold
+      "
+    >
+      Send
+    </button>
+
+  </div>
+
+</div>
 
     </div>
   );

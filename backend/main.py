@@ -1,3 +1,5 @@
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+# from unittest import result
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,7 +10,10 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
+from utils.email_service import send_alert_email
 from schemas import ChatRequest
+from models import PromptTemplate
+from schemas import PromptTemplateCreate
 class BenchmarkRequest(BaseModel):
     prompt: str
 from database import engine, get_db
@@ -20,11 +25,18 @@ from models import (
     AlertHistory
 )
 
-from telemetry import tracer
+# from telemetry import tracer
+
+from otel_sdk.tracer import tracer
+
+from otel_sdk.llm_tracker import (
+    start_chat_span,
+    start_inference_span,
+    start_database_span
+)
 
 from langfuse import Langfuse
 from fastapi import HTTPException
-from pydantic import BaseModel
 
 from services.groq_service import generate_response as groq_response
 
@@ -46,6 +58,11 @@ from prometheus_client import Counter
 prompt_tokens_metric = Counter(
     "prompt_tokens_total",
     "Total Prompt Tokens"
+)
+
+chat_requests_metric = Counter(
+    "chat_requests_total",
+    "Total Chat Requests"
 )
 
 completion_tokens_metric = Counter(
@@ -74,6 +91,8 @@ Base.metadata.create_all(bind=engine)
 # -----------------------------
 
 app = FastAPI(title="LLM Observability Platform")
+
+FastAPIInstrumentor.instrument_app(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,6 +145,59 @@ def chat(
 
     prompt = request.message
     selected_model = request.model
+    selected_template = None
+    print("================================")
+    print("REQUEST TEMPLATE =", request.template)
+    if request.template:
+        print(
+        "TEMPLATE SELECTED:",
+        request.template
+    )
+    print("================================")
+    if request.template:
+        if "|" in request.template:
+            template_name, template_version = (
+            request.template.split("|")
+        )
+            selected_template = (
+            db.query(PromptTemplate)
+            .filter(
+                PromptTemplate.name == template_name,
+                PromptTemplate.version == template_version
+            )
+            .first()
+        )
+        else:
+            selected_template = (
+                db.query(PromptTemplate)
+                .filter(
+                    PromptTemplate.name == request.template
+                )
+                .order_by(
+                    PromptTemplate.id.desc()
+                )
+                .first()
+            )
+    
+    template_name = None
+    template_version = None
+    if selected_template:
+        template_name = selected_template.name
+        template_version = selected_template.version
+        
+        print(
+        f"USING TEMPLATE: "
+        f"{template_name} {template_version}"
+    )
+        prompt = f"""
+{selected_template.template}
+
+User Input:
+{prompt}
+"""
+    # chat_requests_metric.inc()
+
+    print("CHAT REQUEST RECEIVED")
     trace_obj = langfuse.trace(
     name="llm_request",
     input=prompt,
@@ -135,133 +207,224 @@ def chat(
     }
 )
     start_time = time.time()
-    status = "success"
-    error_message = None
-        # MODEL SELECTION
-    if selected_model == "groq":
-        response = groq_response(prompt)
-
-        response_text = (
+    with start_chat_span(
+    username,
+    selected_model
+) as chat_span:
+        with start_inference_span(
+    selected_model
+) as inference_span:
+            if selected_model == "groq":
+                response = groq_response(prompt)
+                response_text = (
                 response.choices[0]
                 .message
                 .content
             )
+                if hasattr(response, "usage") and response.usage:
+                    prompt_tokens = response.usage.prompt_tokens
+                    completion_tokens = (
+                    response.usage.completion_tokens
+                )
+                    total_tokens = (
+                    response.usage.total_tokens
+                )
+                    cost = round(
+                    (total_tokens / 1000000) * 0.59,
+                    6
+                )
 
-        if hasattr(response, "usage") and response.usage:
-                prompt_tokens = response.usage.prompt_tokens
-                completion_tokens = response.usage.completion_tokens
-                total_tokens = response.usage.total_tokens
+            elif selected_model == "gemini":
+
+                result = gemini_response(prompt)
+
+                response_text = result["text"]
+
+                prompt_tokens = result["prompt_tokens"]
+
+                completion_tokens = (
+                    result["completion_tokens"]
+                )
+
+                total_tokens = result["total_tokens"]
+
                 cost = round(
-                 (total_tokens / 1000000) * 0.59,
-                  6
+                    (total_tokens / 1000000) * 0.35,
+                    6
+                )
+
+            elif selected_model == "ollama":
+
+                result = ollama_response(prompt)
+
+                response_text = result["text"]
+
+                prompt_tokens = 0
+                completion_tokens = 0
+                total_tokens = 0
+                cost = 0
+
+            else:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid model"
+                )
+
+            inference_span.set_attribute(
+                "provider",
+                selected_model
+            )
+
+            inference_span.set_attribute(
+                "total_tokens",
+                total_tokens
+            )
+
+            latency = round(
+    time.time() - start_time,
+    2
 )
-
-    elif selected_model == "gemini":
-
-        result = gemini_response(prompt)
-
-        response_text = result["text"]
-
-        prompt_tokens = result["prompt_tokens"]
-
-        completion_tokens = result["completion_tokens"]
-
-        total_tokens = result["total_tokens"]
-
-        cost = round(
-        (total_tokens / 1000000) * 0.35,
-        6
+            inference_span.set_attribute(
+    "cost",
+    cost
+)
+            inference_span.set_attribute(
+    "latency",
+    latency
+)
+            status = "success"
+            error_message = None
+        
+            print("OTEL ATTRIBUTES")
+            print("LATENCY =", latency)
+            print("TOKENS =", total_tokens)
+            print("COST =", cost)
+            print("TEMPLATE =", template_name)
+            print("VERSION =", template_version)
+        
+        chat_span.set_attribute(
+        "latency",
+        latency
+    )
+        
+        chat_span.set_attribute(
+            "prompt_template",
+            request.template or "None"
     )
 
-    elif selected_model == "ollama":
-
-        result = ollama_response(prompt)
-
-        response_text = result["text"]
-
-        prompt_tokens = 0
-        completion_tokens = 0
-        total_tokens = 0
-        cost = 0
-
-    else:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid model"
-        )
-
-    latency = round(
-            time.time() - start_time,
-            2
-    )
-    prompt_tokens_metric.inc(prompt_tokens)
-
-    completion_tokens_metric.inc(
-            completion_tokens
-        )
-
-    total_tokens_metric.inc(
+        chat_span.set_attribute(
+            "total_tokens",
             total_tokens
         )
 
-    chat_record = ChatHistory(
-    username=username,
-    prompt=prompt,
-    response=response_text,
-    model=selected_model,
-    latency=latency,
-    prompt_tokens=prompt_tokens,
-    completion_tokens=completion_tokens,
-    total_tokens=total_tokens,
-    cost=cost,
-    status=status,
-    error_message=error_message
-)
+        chat_span.set_attribute(
+            "cost",
+            cost
+        )
 
-    db.add(chat_record)
-    db.commit()
-    db.refresh(chat_record)
-    print("PROMPT TOKENS =", prompt_tokens)
-    print("COMPLETION TOKENS =", completion_tokens)
-    print("TOTAL TOKENS =", total_tokens)
-    print("COST =", cost)
-    print(type(prompt_tokens))
-    print(type(completion_tokens))
-    print(type(total_tokens))
-    print(type(cost))
-    quality_score = random.randint(7, 10)
-    generation = trace_obj.generation(
-    name="llm_generation",
-    model=selected_model,
-    input=prompt,
-    output=response_text,
-    
-    metadata={
-        "latency": latency,
-        "cost": cost,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens
-    }
+        chat_span.set_attribute(
+            "template_name",
+            template_name or "None"
+        )
+
+        chat_span.set_attribute(
+            "template_version",
+            template_version or "None"
+        )
+
+        chat_span.set_attribute(
+            "username",
+            username
+        )
+
+        chat_span.set_attribute(
+            "model",
+            selected_model
+        )
+
+        chat_record = ChatHistory(
+        username=username,
+
+        prompt=request.message,
+
+        response=response_text,
+
+        model=selected_model,
+
+        template_name=template_name,
+
+        template_version=template_version,
+
+        latency=latency,
+
+        prompt_tokens=prompt_tokens,
+
+        completion_tokens=completion_tokens,
+
+        total_tokens=total_tokens,
+
+        cost=cost,
+
+        status=status,
+
+        error_message=error_message
+    )
+
+        with start_database_span() as db_span:
+            db.add(chat_record)
+            db.commit()
+            db.refresh(chat_record)
+
+            db_span.set_attribute(
+        "chat_id",
+        chat_record.id
+    )
+            db_span.set_attribute(
+    "username",
+    username
 )
-    generation.score(
-    name="quality",
-    value=quality_score
+            db_span.set_attribute(
+    "model",
+    selected_model
 )
-    langfuse.flush()
-    return {
-            "id": chat_record.id,
-            "prompt": prompt,
-            "response": response_text,
-            "model": selected_model,
+        print("PROMPT TOKENS =", prompt_tokens)
+        print("COMPLETION TOKENS =", completion_tokens)
+        print("TOTAL TOKENS =", total_tokens)
+        print("COST =", cost)
+
+        quality_score = random.randint(7, 10)
+        generation = trace_obj.generation(
+        name="llm_generation",
+        model=selected_model,
+        input=prompt,
+        output=response_text,
+        
+        metadata={
             "latency": latency,
+            "cost": cost,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost": cost,
-            "quality_score": quality_score,
-}
+            "total_tokens": total_tokens
+        }
+    )
+        generation.score(
+        name="quality",
+        value=quality_score
+    )
+        langfuse.flush()
+        return {
+                "id": chat_record.id,
+                "prompt": prompt,
+                "response": response_text,
+                "model": selected_model,
+                "latency": latency,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": cost,
+                "quality_score": quality_score,
+    }
 
 @app.post("/benchmark")
 def benchmark_models(
@@ -601,6 +764,7 @@ def get_chat(
         chat = (
             db.query(ChatHistory)
             .filter(ChatHistory.id == chat_id)
+            .order_by(PromptTemplate.id.desc())
             .first()
         )
 
@@ -1095,35 +1259,95 @@ def quality_drift(db: Session = Depends(get_db)):
     )
 
     avg_response_length = (
-        sum(len(chat.response or "")
-            for chat in chats)
+        sum(
+            len(chat.response or "")
+            for chat in chats
+        )
         / len(chats)
     )
 
     errors = len(
-        [c for c in chats if c.status == "failed"]
+        [
+            c for c in chats
+            if c.status == "failed"
+        ]
     )
 
     error_rate = (
         errors / len(chats)
     ) * 100
 
-    if avg_latency > 10 or error_rate > 20:
+    print("AVG LATENCY =", avg_latency)
+    print("ERROR RATE =", error_rate)
+
+    # -------------------------
+    # QUALITY DRIFT DETECTION
+    # -------------------------
+
+    if avg_latency > 5 or error_rate > 20:
+
         drift = "High"
 
-    elif avg_latency > 5 or error_rate > 10:
+        print("HIGH DRIFT DETECTED")
+        print("CALLING EMAIL FUNCTION")
+
+        send_alert_email(
+            "QUALITY DRIFT ALERT",
+            (
+                f"Drift={drift}\n"
+                f"Latency={avg_latency:.2f}s\n"
+                f"Error Rate={error_rate:.2f}%"
+            )
+        )
+
+        existing_alert = (
+            db.query(AlertHistory)
+            .filter(
+                AlertHistory.alert_type
+                == "QUALITY_DRIFT"
+            )
+            .order_by(
+                AlertHistory.id.desc()
+            )
+            .first()
+        )
+
+        if not existing_alert:
+
+            alert = AlertHistory(
+                alert_type="QUALITY_DRIFT",
+                message=(
+                    f"Quality Drift Detected "
+                    f"(Latency={avg_latency:.2f}s, "
+                    f"Error Rate={error_rate:.2f}%)"
+                )
+            )
+
+            db.add(alert)
+            db.commit()
+
+    elif avg_latency > 2 or error_rate > 10:
+
         drift = "Medium"
 
     else:
+
         drift = "Low"
 
     return {
         "drift": drift,
-        "avg_latency": round(avg_latency, 2),
-        "avg_response_length": round(
-            avg_response_length, 2
+        "avg_latency": round(
+            avg_latency,
+            2
         ),
-        "error_rate": round(error_rate, 2)
+        "avg_response_length": round(
+            avg_response_length,
+            2
+        ),
+        "error_rate": round(
+            error_rate,
+            2
+        )
     }
 
 @app.get("/recommended-model")
@@ -1197,3 +1421,270 @@ def get_alerts(
         }
         for alert in alerts
     ]
+@app.post("/prompt-template")
+def create_prompt_template(
+    data: PromptTemplateCreate,
+    db: Session = Depends(get_db)
+):
+
+    template = PromptTemplate(
+        name=data.name,
+        version=data.version,
+        template=data.template,
+        is_active=True
+    )
+
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+
+    return template
+
+@app.get("/prompt-template")
+def get_prompt_templates(
+    db: Session = Depends(get_db)
+):
+
+    templates = (
+        db.query(PromptTemplate)
+        .order_by(
+            PromptTemplate.created_at.desc()
+        )
+        .all()
+    )
+
+    return templates
+
+@app.put("/prompt-template/{template_id}/activate")
+def activate_prompt(
+    template_id: int,
+    db: Session = Depends(get_db)
+):
+
+    db.query(PromptTemplate).update(
+        {"is_active": False}
+    )
+
+    template = (
+        db.query(PromptTemplate)
+        .filter(
+            PromptTemplate.id == template_id
+        )
+        .first()
+    )
+
+    if template:
+
+        template.is_active = True
+
+        db.commit()
+
+    return {
+        "message":
+        "Template activated"
+    }
+
+@app.get("/prompt-analytics")
+def prompt_analytics(
+    db: Session = Depends(get_db)
+):
+
+    chats = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.template_name != None
+        )
+        .all()
+    )
+
+    analytics = {}
+
+    for chat in chats:
+
+        key = (
+            chat.template_name,
+            chat.template_version,
+            chat.model
+        )
+
+        if key not in analytics:
+
+            analytics[key] = {
+                "requests": 0,
+                "cost": 0,
+                "latency": 0,
+                "tokens": 0
+            }
+
+        analytics[key]["requests"] += 1
+
+        analytics[key]["cost"] += (
+            chat.cost or 0
+        )
+
+        analytics[key]["latency"] += (
+            chat.latency or 0
+        )
+
+        analytics[key]["tokens"] += (
+            chat.total_tokens or 0
+        )
+
+    result = []
+
+    for (
+        template_name,
+        template_version,
+        model
+    ), values in analytics.items():
+
+        requests_count = values["requests"]
+
+        template = (
+            db.query(PromptTemplate)
+            .filter(
+                PromptTemplate.version
+                == template_version
+            )
+            .first()
+        )
+
+        traffic_percentage = 0
+
+        if template:
+            traffic_percentage = (
+                template.traffic_percentage
+            )
+
+        result.append({
+
+            "template_name":
+                template_name,
+
+            "template_version":
+                template_version,
+
+            "traffic_percentage":
+                traffic_percentage,
+
+            "model":
+                model,
+
+            "requests":
+                requests_count,
+
+            "avg_cost":
+                round(
+                    values["cost"]
+                    / requests_count,
+                    6
+                ),
+
+            "avg_latency":
+                round(
+                    values["latency"]
+                    / requests_count,
+                    2
+                ),
+
+            "avg_tokens":
+                round(
+                    values["tokens"]
+                    / requests_count,
+                    2
+                ),
+
+            "total_cost":
+                round(
+                    values["cost"],
+                    6
+                ),
+
+            "total_tokens":
+                values["tokens"]
+        })
+
+    return sorted(
+        result,
+        key=lambda x: x["requests"],
+        reverse=True
+    )
+
+@app.get("/templates")
+def get_templates(
+    db: Session = Depends(get_db)
+):
+
+    templates = (
+        db.query(PromptTemplate)
+        .all()
+    )
+
+    return [
+        {
+            "name": t.name,
+            "version": t.version
+        }
+        for t in templates
+    ]
+
+@app.get("/ab-testing")
+def ab_testing(db: Session = Depends(get_db)):
+
+    chats = (
+        db.query(ChatHistory)
+        .filter(ChatHistory.template_name != None)
+        .all()
+    )
+
+    analytics = {}
+
+    for chat in chats:
+
+        key = (
+            chat.template_name,
+            chat.template_version
+        )
+
+        if key not in analytics:
+
+            analytics[key] = {
+                "requests": 0,
+                "latency": 0,
+                "cost": 0,
+                "tokens": 0
+            }
+
+        analytics[key]["requests"] += 1
+        analytics[key]["latency"] += chat.latency or 0
+        analytics[key]["cost"] += chat.cost or 0
+        analytics[key]["tokens"] += chat.total_tokens or 0
+
+    result = []
+
+    for (
+        template_name,
+        template_version
+    ), values in analytics.items():
+
+        requests_count = values["requests"]
+
+        result.append({
+            "template_name": template_name,
+            "template_version": template_version,
+            "requests": requests_count,
+            "avg_latency": round(
+                values["latency"] / requests_count,
+                2
+            ),
+            "avg_cost": round(
+                values["cost"] / requests_count,
+                6
+            ),
+            "avg_tokens": round(
+                values["tokens"] / requests_count,
+                2
+            )
+        })
+
+    return result

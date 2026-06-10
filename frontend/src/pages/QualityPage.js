@@ -1,11 +1,13 @@
+import React from "react";
 
 export default function QualityPage({
   benchmarkStats,
-  recommendedModel
+  recommendedModel,
+  quality
 }) {
 
   const bestQualityModel =
-    benchmarkStats
+    benchmarkStats?.quality
       ? Object.keys(
           benchmarkStats.quality
         ).reduce((a, b) =>
@@ -25,7 +27,7 @@ export default function QualityPage({
 
       {/* KPI Cards */}
 
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
+      <div className="grid md:grid-cols-4 gap-6 mb-8">
 
         <div className="bg-slate-800 p-6 rounded-2xl">
           <h3 className="text-slate-400">
@@ -54,6 +56,16 @@ export default function QualityPage({
 
           <p className="text-3xl font-bold mt-2">
             {recommendedModel?.score || 0}
+          </p>
+        </div>
+
+        <div className="bg-slate-800 p-6 rounded-2xl">
+          <h3 className="text-slate-400">
+            Quality Drift
+          </h3>
+
+          <p className="text-3xl font-bold mt-2">
+            {quality?.drift || "Unknown"}
           </p>
         </div>
 
@@ -87,7 +99,7 @@ export default function QualityPage({
           ))}
       </div>
 
-      {/* Insights */}
+      {/* Quality Insights */}
 
       <div className="bg-slate-800 p-8 rounded-2xl">
 
@@ -109,7 +121,7 @@ export default function QualityPage({
             🤖 Recommended:
             {" "}
             <strong>
-              {recommendedModel?.recommended_model}
+              {recommendedModel?.recommended_model || "-"}
             </strong>
           </p>
 
@@ -117,6 +129,40 @@ export default function QualityPage({
             📈 Monitor quality scores
             continuously to detect
             model drift.
+          </p>
+
+          <hr className="border-slate-700 my-4" />
+
+          <p>
+            🚨 Drift Status:
+            {" "}
+            <strong>
+              {quality?.drift || "Unknown"}
+            </strong>
+          </p>
+
+          <p>
+            ⚡ Average Latency:
+            {" "}
+            <strong>
+              {quality?.avg_latency || 0}s
+            </strong>
+          </p>
+
+          <p>
+            📄 Average Response Length:
+            {" "}
+            <strong>
+              {quality?.avg_response_length || 0}
+            </strong>
+          </p>
+
+          <p>
+            ❌ Error Rate:
+            {" "}
+            <strong>
+              {quality?.error_rate || 0}%
+            </strong>
           </p>
 
         </div>
