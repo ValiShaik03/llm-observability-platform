@@ -98,47 +98,58 @@ export default function CostPage({
 
       </div>
 
-      {/* Cost By Model */}
+<div className="bg-slate-800 p-8 rounded-2xl mb-8">
+  <h2 className="text-3xl font-bold mb-6">
+    Cost By Model
+  </h2>
 
-      <div className="bg-slate-800 p-8 rounded-2xl mb-8">
+  <div className="space-y-6">
 
-        <h2 className="text-3xl font-bold mb-6">
-          Cost By Model
-        </h2>
+    {modelStats?.map((model) => {
+      const maxCost = Math.max(
+        ...modelStats.map((m) => m.cost)
+      );
 
-        <div className="space-y-4">
+      const percentage =
+        maxCost > 0
+          ? (model.cost / maxCost) * 100
+          : 0;
 
-          {modelStats?.length > 0 ? (
-            modelStats.map((model) => (
-              <div
-                key={model.model}
-                className="
-                  flex
-                  justify-between
-                  items-center
-                  border-b
-                  border-slate-700
-                  pb-3
-                "
-              >
-                <span className="font-medium">
-                  {model.model}
-                </span>
+      return (
+        <div key={model.model}>
 
-                <span>
-                  ${model.cost}
-                </span>
-              </div>
-            ))
-          ) : (
-            <p>No model cost data available</p>
-          )}
+          <div className="flex justify-between mb-2">
+            <span className="font-medium capitalize">
+              {model.model}
+            </span>
+
+            <span>
+              ${model.cost}
+            </span>
+          </div>
+
+          <div className="w-full bg-slate-700 rounded-full h-4">
+            <div
+              className="
+                bg-green-500
+                h-4
+                rounded-full
+                transition-all
+              "
+              style={{
+                width: `${percentage}%`
+              }}
+            />
+          </div>
 
         </div>
+      );
+    })}
 
-      </div>
+  </div>
+</div>
 
-      {/* Cost Optimization Insights */}
+      {/* Cost Optimization Insights
 
       <div className="bg-slate-800 p-8 rounded-2xl">
 
@@ -188,6 +199,7 @@ export default function CostPage({
 
       </div>
 
+      */}
     </div>
   );
 }

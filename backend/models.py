@@ -45,11 +45,14 @@ class BenchmarkHistory(Base):
     created_at = Column(DateTime)
 
 class AlertHistory(Base):
+
     __tablename__ = "alert_history"
 
     id = Column(Integer, primary_key=True)
 
     alert_type = Column(String)
+
+    severity = Column(String)
 
     message = Column(Text)
 
@@ -57,7 +60,6 @@ class AlertHistory(Base):
         DateTime,
         default=datetime.utcnow
     )
-
 class User(Base):
 
     __tablename__ = "users"

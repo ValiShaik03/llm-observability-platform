@@ -122,19 +122,19 @@ export default function Sidebar({
             🚨 Alert Center
           </button>
 
-          <button
+          {/* <button
             onClick={() => setActivePage("observability")}
             className={menuClass("observability")}
           >
             🔍 Observability
-          </button>
+          </button> */}
 
-          <button
+          {/* <button
             onClick={() => setActivePage("health")}
             className={menuClass("health")}
           >
             ⚙️ Health
-          </button>
+          </button> */}
 
         </div>
 

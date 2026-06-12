@@ -1,4 +1,9 @@
+import React, {
+  useEffect,
+  useState
+} from "react";
 
+import axios from "axios";
 import {
   LineChart,
   Line,
@@ -22,7 +27,38 @@ export default function Dashboard({
 })
 
 {
-  
+  const [serviceHealth, setServiceHealth] = useState({});
+  useEffect(() => {
+
+  fetchServiceHealth();
+
+  const interval = setInterval(() => {
+    fetchServiceHealth();
+  }, 10000);
+
+  return () => clearInterval(interval);
+
+}, []);
+  const fetchServiceHealth = async () => {
+
+  try {
+
+    const res = await axios.get(
+      "http://127.0.0.1:8000/service-health"
+    );
+
+    setServiceHealth(res.data);
+
+  } catch (error) {
+
+    console.error(
+      "Service health fetch failed",
+      error
+    );
+
+  }
+
+};
   const getStatusColor = (status) =>
     status === "healthy"
       ? "text-green-400"
@@ -89,6 +125,11 @@ const cheapestWinner =
 const recommendation =
   recommendedModel?.recommended_model || "-";
 
+const bestModel =
+  recommendedModel?.models?.find(
+    m => m.model === recommendation
+  );
+
 console.log(
   "RECOMMENDED MODEL DATA:",
   recommendedModel
@@ -100,38 +141,155 @@ console.log(
         Key Metrics
       </h2>
 
-      <div className="bg-slate-800 p-6 rounded-2xl mb-8 border border-blue-500">
+      <div className="bg-slate-800 p-6 rounded-3xl mb-8">
 
-  <h3 className="text-slate-400 mb-2">
-    🤖 Recommended Model
-  </h3>
+  <h2 className="text-4xl font-bold mb-6">
+    Service Health
+  </h2>
 
-  <p className="text-4xl font-bold">
-    {recommendation}
-  </p>
+  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 
-  <div className="mt-4 text-slate-300">
+    <div className="bg-slate-700 p-4 rounded-xl">
+      {serviceHealth.api === "UP"
+        ? "🟢 API"
+        : "🔴 API"}
+    </div>
 
-    <p>
-      <b>Score : </b>
-      {recommendedModel?.score ?? "-"}
-    </p>
+    <div className="bg-slate-700 p-4 rounded-xl">
+      {serviceHealth.database === "UP"
+        ? "🟢 Database"
+        : "🔴 Database"}
+    </div>
 
-    <p>
-      <b>Avg Latency : </b>
-      {recommendedModel?.avg_latency ?? "-"}s
-    </p>
+    <div className="bg-slate-700 p-4 rounded-xl">
+      {serviceHealth.prometheus === "UP"
+        ? "🟢 Prometheus"
+        : "🔴 Prometheus"}
+    </div>
 
-    <p>
-      <b>Cost : </b>
-      ${recommendedModel?.cost ?? "-"}
-    </p>
+    <div className="bg-slate-700 p-4 rounded-xl">
+      {serviceHealth.jaeger === "UP"
+        ? "🟢 Jaeger"
+        : "🔴 Jaeger"}
+    </div>
+
+    <div className="bg-slate-700 p-4 rounded-xl">
+      {serviceHealth.langfuse === "UP"
+        ? "🟢 Langfuse"
+        : "🔴 Langfuse"}
+    </div>
 
   </div>
 
 </div>
 
+      <div className="bg-slate-800 p-8 rounded-3xl mb-8 border border-blue-500">
+
+  <h3 className="text-slate-400 text-2xl mb-4">
+    🤖 Recommended Model
+  </h3>
+
+  <div className="flex items-center gap-4 mb-6">
+
+    <h2 className="text-6xl font-bold">
+      {recommendation}
+    </h2>
+
+    <span className="bg-green-600 px-4 py-2 rounded-xl text-sm font-bold">
+      BEST
+    </span>
+
+  </div>
+
+  <p className="text-green-400 mb-8">
+    Best overall quality-to-cost ratio
+  </p>
+
+  <div className="grid grid-cols-4 gap-8">
+
+    <div>
+      <p className="text-slate-400">
+        Quality Score
+      </p>
+
+      <p className="text-4xl font-bold text-green-400">
+        {bestModel?.quality_score ?? "-"}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-slate-400">
+        Avg Latency
+      </p>
+
+      <p className="text-4xl font-bold">
+        {bestModel?.avg_latency ?? "-"}s
+      </p>
+    </div>
+
+    <div>
+      <p className="text-slate-400">
+        Cost
+      </p>
+
+      <p className="text-4xl font-bold">
+        ${bestModel?.cost ?? "-"}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-slate-400">
+        Requests
+      </p>
+
+      <p className="text-4xl font-bold">
+        {bestModel?.requests ?? "-"}
+      </p>
+    </div>
+
+  </div>
+
+</div>
+
+<div className="bg-slate-800 p-6 rounded-3xl mb-8">
+
+  <h3 className="text-2xl font-bold mb-4">
+    🏆 Model Rankings
+  </h3>
+
+  {recommendedModel?.models
+    ?.sort(
+      (a, b) =>
+        b.quality_score - a.quality_score
+    )
+    .map((model, index) => (
+
+      <div
+        key={model.model}
+        className="flex justify-between py-3 border-b border-slate-700"
+      >
+
+        <span>
+          {index === 0
+            ? "🥇"
+            : index === 1
+            ? "🥈"
+            : "🥉"}{" "}
+          {model.model}
+        </span>
+
+        <span className="font-bold">
+          {model.quality_score}
+        </span>
+
+      </div>
+
+    ))}
+
+</div>
+
       {/* KPI Cards */}
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
@@ -177,369 +335,23 @@ console.log(
 
   <div className="bg-slate-800 p-6 rounded-2xl">
   <h3 className="text-slate-400">
+    Total Requests
+  </h3>
+
+  <p className="text-4xl font-bold mt-2">
+    {stats.total_requests}
+  </p>
+</div>
+   
+  <div className="bg-slate-800 p-6 rounded-2xl">
+  <h3 className="text-slate-400">
     Total Cost
   </h3>
 
   <p className="text-4xl font-bold mt-2">
-    ${stats.total_cost}
+    ${Number(stats.total_cost).toFixed(6)}
   </p>
 </div>
-
-</div>
-
-      {/* Model Comparison */}
-
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Model Comparison
-</h2>
-
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-  {modelStats?.map((model) => (
-
-    <div
-      key={model.model}
-      className="bg-slate-800 p-6 rounded-3xl"
-    >
-
-      <h3 className="text-3xl font-bold mb-2">
-  {
-    model.model === "groq"
-      ? "llama-3.1-8b-instant"
-      : model.model === "gemini"
-      ? "Gemini 2.0 Flash"
-      : "TinyLlama"
-  }
-</h3>
-
-<p className="text-slate-400 mb-4">
-  Provider: {model.model.toUpperCase()}
-</p>
-
-      <div className="space-y-3">
-
-        <div>
-          <span className="text-slate-400">
-            Requests:
-          </span>{" "}
-          {model.requests}
-        </div>
-
-        <div>
-          <span className="text-slate-400">
-            Tokens:
-          </span>{" "}
-          {model.tokens}
-        </div>
-
-        <div>
-          <span className="text-slate-400">
-            Cost:
-          </span>{" "}
-          ${model.cost}
-        </div>
-
-        <div>
-          <span className="text-slate-400">
-            Avg Latency:
-          </span>{" "}
-          {model.latency}s
-        </div>
-
-      </div>
-
-    </div>
-
-  ))}
-
-</div>
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Cost Breakdown
-</h2>
-
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400 mb-3">
-      🏆 Fastest Model
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {
-  fastestModel?.model === "groq"
-    ? "llama-3.1-8b-instant"
-    : fastestModel?.model === "gemini"
-    ? "Gemini 2.5 Flash"
-    : "TinyLlama"
-}
-    </p>
-
-    <p className="text-slate-400 mt-2">
-      {fastestModel?.latency}s
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400 mb-3">
-      💸 Cheapest Model
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {
-  cheapestModel?.model === "groq"
-    ? "llama-3.1-8b-instant"
-    : cheapestModel?.model === "gemini"
-    ? "Gemini 2.5 Flash"
-    : "TinyLlama"
-}
-    </p>
-
-    <p className="text-slate-400 mt-2">
-      ${cheapestModel?.cost}
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400 mb-3">
-      📈 Most Used Model
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {
-  mostUsedModel?.model === "groq"
-    ? "llama-3.1-8b-instant"
-    : mostUsedModel?.model === "gemini"
-    ? "Gemini 2.5 Flash"
-    : "TinyLlama"
-}
-    </p>
-
-    <p className="text-slate-400 mt-2">
-      {mostUsedModel?.requests} requests
-    </p>
-
-  </div>
-
-</div>
-
-<div className="bg-slate-800 rounded-3xl p-6 mb-10">
-
-  {modelStats?.map((model) => (
-
-    <div
-      key={model.model}
-      className="
-        flex
-        justify-between
-        py-3
-        border-b
-        border-slate-700
-      "
-    >
-
-      <span className="capitalize">
-
-        {
-          model.model === "groq"
-            ? "llama-3.1-8b-instant"
-            : model.model === "gemini"
-            ? "Gemini 2.5 Flash"
-            : "TinyLlama"
-        }
-
-      </span>
-
-      <span className="font-semibold">
-
-        ${Number(model.cost).toFixed(6)}
-
-      </span>
-
-    </div>
-
-  ))}
-
-  <div
-    className="
-      flex
-      justify-between
-      pt-4
-      text-xl
-      font-bold
-    "
-  >
-
-    <span>Total Cost</span>
-
-    <span>
-      ${stats.total_cost}
-    </span>
-
-  </div>
-
-</div>
-
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Model Leaderboard
-</h2>
-
-
-
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      💰 Most Expensive
-    </h3>
-
-    <p className="text-2xl font-bold">
-      Gemini 2.5 Flash
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      💸 Cheapest
-    </h3>
-
-    <p className="text-2xl font-bold">
-      TinyLlama
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      📈 Highest Usage
-    </h3>
-
-    <p className="text-2xl font-bold">
-      Gemini 2.5 Flash
-    </p>
-  </div>
-
-</div>
-
-
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Benchmark Analytics
-</h2>
-
-<div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      🏆 Fastest Overall
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {fastestWinner}
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      ⭐ Best Quality
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {qualityWinner}
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      💰 Cheapest
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {cheapestWinner}
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-    <h3 className="text-slate-400 mb-3">
-      📊 Benchmark Runs
-    </h3>
-
-    <p className="text-2xl font-bold">
-      {benchmarkStats?.total_runs || 0}
-    </p>
-  </div>
-
-</div>
-
-<h2 className="text-4xl font-bold mb-6">
-  Benchmark History
-</h2>
-
-<div className="bg-slate-800 rounded-3xl p-6 mb-12 overflow-x-auto">
-
-<table className="w-full">
-
-<thead>
-
-<tr className="border-b border-slate-700">
-
-<th className="text-left py-3">
-Prompt
-</th>
-
-<th className="text-left py-3">
-Fastest
-</th>
-
-<th className="text-left py-3">
-Cheapest
-</th>
-
-<th className="text-left py-3">
-Best Quality
-</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-{benchmarkHistory?.map(
-(item, index) => (
-
-<tr
-key={index}
-className="
-border-b
-border-slate-700
-"
->
-
-<td className="py-3">
-{item.prompt}
-</td>
-
-<td className="py-3">
-{item.fastest_model}
-</td>
-
-<td className="py-3">
-{item.cheapest_model}
-</td>
-
-<td className="py-3">
-{item.best_quality_model}
-</td>
-
-</tr>
-
-))}
-</tbody>
-
-</table>
 
 </div>
 
@@ -576,103 +388,6 @@ border-slate-700
   </ResponsiveContainer>
 
 </div>
-
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Cost Forecast
-</h2>
-
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Next 7 Days
-    </h3>
-
-    <p className="text-3xl font-bold mt-2">
-      ${forecast.forecast_7_days}
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Next 30 Days
-    </h3>
-
-    <p className="text-3xl font-bold mt-2">
-      ${forecast.forecast_30_days}
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Next 90 Days
-    </h3>
-
-    <p className="text-3xl font-bold mt-2">
-      ${forecast.forecast_90_days}
-    </p>
-
-  </div>
-
-</div>
-
-<h2 className="text-4xl font-bold mt-10 mb-6">
-  Quality Drift Monitor
-</h2>
-
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Drift Status
-    </h3>
-
-    <p
-      className={`text-3xl font-bold mt-2 ${
-        quality.drift === "Low"
-          ? "text-green-400"
-          : quality.drift === "Medium"
-          ? "text-yellow-400"
-          : "text-red-400"
-      }`}
-    >
-      {quality.drift}
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Avg Response Length
-    </h3>
-
-    <p className="text-3xl font-bold mt-2">
-      {quality.avg_response_length}
-    </p>
-
-  </div>
-
-  <div className="bg-slate-800 p-6 rounded-3xl">
-
-    <h3 className="text-slate-400">
-      Error Rate
-    </h3>
-
-    <p className="text-3xl font-bold mt-2">
-      {quality.error_rate}%
-    </p>
-
-  </div>
-
-</div>
-
 
       {/* Quick Access */}
 

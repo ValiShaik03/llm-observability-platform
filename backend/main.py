@@ -1,3 +1,11 @@
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+import smtplib
+from email.mime.text import MIMEText
+import requests
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 # from unittest import result
 from fastapi import FastAPI, Depends
@@ -281,10 +289,7 @@ User Input:
                 total_tokens
             )
 
-            latency = round(
-    time.time() - start_time,
-    2
-)
+            latency = 8.0
             inference_span.set_attribute(
     "cost",
     cost
@@ -376,10 +381,13 @@ User Input:
             db.commit()
             db.refresh(chat_record)
 
+            # Generate alerts automatically
+            generate_alerts(db)
+
             db_span.set_attribute(
-        "chat_id",
-        chat_record.id
-    )
+                "chat_id",
+                chat_record.id
+            )
             db_span.set_attribute(
     "username",
     username
@@ -1024,153 +1032,219 @@ def health(db: Session = Depends(get_db)):
             send_slack_alert(alert_message)
 
             alert = AlertHistory(
-                alert_type="POSTGRES_DOWN",
+                alert_type="LANGFUSE_DOWN",
+                severity="critical",
                 message=alert_message
             )
-
             db.add(alert)
             db.commit()
+
+EMAIL_FROM = "mahaboobvalishaik557@gmail.com"
+
+EMAIL_PASSWORD = "ioho hhds ytdo xplm"
+
+EMAIL_TO = "mahaboobvalishaik557@gmail.com"
+
+def send_alert_email(
+    severity,
+    alert_type,
+    message
+):
+
+    try:
+
+        body = f"""
+Alert Type: {alert_type}
+
+Severity: {severity}
+
+Message:
+
+{message}
+"""
+
+        msg = MIMEText(body)
+
+        msg["Subject"] = (
+            f"[{severity.upper()}] "
+            f"{alert_type}"
+        )
+
+        msg["From"] = EMAIL_FROM
+
+        msg["To"] = EMAIL_TO
+
+        server = smtplib.SMTP(
+            "smtp.gmail.com",
+            587
+        )
+
+        server.starttls()
+
+        server.login(
+            EMAIL_FROM,
+            EMAIL_PASSWORD
+        )
+
+        server.sendmail(
+            EMAIL_FROM,
+            EMAIL_TO,
+            msg.as_string()
+        )
+
+        server.quit()
+
+    except Exception as e:
+
+        print(
+            "Email notification failed:",
+            e
+        )
 
     # Prometheus
-    try:
-        requests.get(
-            "http://localhost:9090/-/healthy",
-            timeout=2
-        )
+#     try:
+#         requests.get(
+#             "http://localhost:9090/-/healthy",
+#             timeout=2
+#         )
 
-    except:
-        prometheus = "unhealthy"
+#     except:
+#         prometheus = "unhealthy"
 
-        alert_message = "🚨 Prometheus is DOWN"
+#         alert_message = "🚨 Prometheus is DOWN"
 
-        last_alert = (
-            db.query(AlertHistory)
-            .filter(
-                AlertHistory.alert_type == "PROMETHEUS_DOWN"
-            )
-            .order_by(AlertHistory.id.desc())
-            .first()
-        )
+#         last_alert = (
+#             db.query(AlertHistory)
+#             .filter(
+#                 AlertHistory.alert_type == "PROMETHEUS_DOWN"
+#             )
+#             .order_by(AlertHistory.id.desc())
+#             .first()
+#         )
 
-        if not last_alert:
+#         if not last_alert:
 
-            send_slack_alert(alert_message)
+#             send_slack_alert(alert_message)
 
-            alert = AlertHistory(
-                alert_type="PROMETHEUS_DOWN",
-                message=alert_message
-            )
+#             alert = AlertHistory(
+#     alert_type="LANGFUSE_DOWN",
+#     severity="critical",
+#     message=alert_message
+# )
 
-            db.add(alert)
-            db.commit()
+#             db.add(alert)
+#             db.commit()
 
-    # Langfuse
-    try:
-        requests.get(
-            "http://localhost:3002",
-            timeout=2
-        )
+#     # Langfuse
+#     try:
+#         requests.get(
+#             "http://localhost:3002",
+#             timeout=2
+#         )
 
-    except:
-        langfuse = "unhealthy"
+#     except:
+#         langfuse = "unhealthy"
 
-        alert_message = "🚨 Langfuse is DOWN"
+#         alert_message = "🚨 Langfuse is DOWN"
 
-        last_alert = (
-            db.query(AlertHistory)
-            .filter(
-                AlertHistory.alert_type == "LANGFUSE_DOWN"
-            )
-            .order_by(AlertHistory.id.desc())
-            .first()
-        )
+#         last_alert = (
+#             db.query(AlertHistory)
+#             .filter(
+#                 AlertHistory.alert_type == "LANGFUSE_DOWN"
+#             )
+#             .order_by(AlertHistory.id.desc())
+#             .first()
+#         )
 
-        if not last_alert:
+#         if not last_alert:
 
-            send_slack_alert(alert_message)
+#             send_slack_alert(alert_message)
 
-            alert = AlertHistory(
-                alert_type="LANGFUSE_DOWN",
-                message=alert_message
-            )
+#             alert = AlertHistory(
+#     alert_type="LANGFUSE_DOWN",
+#     severity="critical",
+#     message=alert_message
+# )
 
-            db.add(alert)
-            db.commit()
+#             db.add(alert)
+#             db.commit()
 
-    # Jaeger
-    try:
-        requests.get(
-            "http://localhost:16686",
-            timeout=2
-        )
+#     # Jaeger
+#     try:
+#         requests.get(
+#             "http://localhost:16686",
+#             timeout=2
+#         )
 
-    except:
-        jaeger = "unhealthy"
+#     except:
+#         jaeger = "unhealthy"
 
-        alert_message = "🚨 Jaeger is DOWN"
+#         alert_message = "🚨 Jaeger is DOWN"
 
-        last_alert = (
-            db.query(AlertHistory)
-            .filter(
-                AlertHistory.alert_type == "JAEGER_DOWN"
-            )
-            .order_by(AlertHistory.id.desc())
-            .first()
-        )
+#         last_alert = (
+#             db.query(AlertHistory)
+#             .filter(
+#                 AlertHistory.alert_type == "JAEGER_DOWN"
+#             )
+#             .order_by(AlertHistory.id.desc())
+#             .first()
+#         )
 
-        if not last_alert:
+#         if not last_alert:
 
-            send_slack_alert(alert_message)
+#             send_slack_alert(alert_message)
 
-            alert = AlertHistory(
-                alert_type="JAEGER_DOWN",
-                message=alert_message
-            )
+#             alert = AlertHistory(
+#                 alert_type="JAEGER_DOWN",
+#                 severity="critical",
+#                 message=alert_message
+#             )
 
-            db.add(alert)
-            db.commit()
+#             db.add(alert)
+#             db.commit()
 
-    # Grafana
-    try:
-        requests.get(
-            "http://localhost:3000/api/health",
-            timeout=2
-        )
+#     # Grafana
+#     try:
+#         requests.get(
+#             "http://localhost:3000/api/health",
+#             timeout=2
+#         )
 
-    except:
-        grafana = "unhealthy"
+#     except:
+#         grafana = "unhealthy"
 
-        alert_message = "🚨 Grafana is DOWN"
+#         alert_message = "🚨 Grafana is DOWN"
 
-        last_alert = (
-            db.query(AlertHistory)
-            .filter(
-                AlertHistory.alert_type == "GRAFANA_DOWN"
-            )
-            .order_by(AlertHistory.id.desc())
-            .first()
-        )
+#         last_alert = (
+#             db.query(AlertHistory)
+#             .filter(
+#                 AlertHistory.alert_type == "GRAFANA_DOWN"
+#             )
+#             .order_by(AlertHistory.id.desc())
+#             .first()
+#         )
 
-        if not last_alert:
+#         if not last_alert:
 
-            send_slack_alert(alert_message)
+#             send_slack_alert(alert_message)
 
-            alert = AlertHistory(
-                alert_type="GRAFANA_DOWN",
-                message=alert_message
-            )
+#             alert = AlertHistory(
+#                 alert_type="GRAFANA_DOWN",
+#                 severity="critical",
+#                 message=alert_message
+#             )
 
-            db.add(alert)
-            db.commit()
+#             db.add(alert)
+#             db.commit()
 
-    return {
-        "fastapi": "healthy",
-        "postgres": postgres,
-        "prometheus": prometheus,
-        "langfuse": langfuse,
-        "jaeger": jaeger,
-        "grafana": grafana
-    }
+#     return {
+#         "fastapi": "healthy",
+#         "postgres": postgres,
+#         "prometheus": prometheus,
+#         "langfuse": langfuse,
+#         "jaeger": jaeger,
+#         "grafana": grafana
+#     }
 
 @app.post("/login")
 def login(
@@ -1291,15 +1365,6 @@ def quality_drift(db: Session = Depends(get_db)):
         print("HIGH DRIFT DETECTED")
         print("CALLING EMAIL FUNCTION")
 
-        send_alert_email(
-            "QUALITY DRIFT ALERT",
-            (
-                f"Drift={drift}\n"
-                f"Latency={avg_latency:.2f}s\n"
-                f"Error Rate={error_rate:.2f}%"
-            )
-        )
-
         existing_alert = (
             db.query(AlertHistory)
             .filter(
@@ -1316,15 +1381,17 @@ def quality_drift(db: Session = Depends(get_db)):
 
             alert = AlertHistory(
                 alert_type="QUALITY_DRIFT",
+                severity="critical",
                 message=(
-                    f"Quality Drift Detected "
-                    f"(Latency={avg_latency:.2f}s, "
-                    f"Error Rate={error_rate:.2f}%)"
-                )
-            )
+        f"Quality Drift Detected "
+        f"(Latency={avg_latency:.2f}s, "
+        f"Error Rate={error_rate:.2f}%)"
+    )
+)
 
             db.add(alert)
             db.commit()
+
 
     elif avg_latency > 2 or error_rate > 10:
 
@@ -1368,59 +1435,347 @@ def recommended_model(db: Session = Depends(get_db)):
         if not chats:
             continue
 
-        avg_latency = sum(c.latency for c in chats) / len(chats)
+        total_requests = len(chats)
 
-        total_cost = sum(c.cost for c in chats)
-
-        quality_score = 8
-
-        score = (
-            quality_score * 50
-            - avg_latency * 10
-            - total_cost * 100000
+        avg_latency = (
+            sum(c.latency or 0 for c in chats)
+            / total_requests
         )
 
+        total_cost = sum(
+            c.cost or 0
+            for c in chats
+        )
+
+        total_prompt_tokens = sum(
+            c.prompt_tokens or 0
+            for c in chats
+        )
+        
+
+        total_completion_tokens = sum(
+            c.completion_tokens or 0
+            for c in chats
+        )
+
+        total_tokens = sum(
+            c.total_tokens or 0
+            for c in chats
+        )
+
+        avg_tokens = (
+            total_tokens / total_requests
+            if total_requests > 0
+            else 0
+        )
+
+        error_count = len([
+            c for c in chats
+            if not c.response
+            or len(str(c.response).strip()) == 0
+        ])
+
+        error_rate = (
+            error_count / total_requests
+        ) * 100
+
+        avg_completion_tokens = (
+            total_completion_tokens / total_requests
+        )
+
+        # Quality Formula
+        quality_score = (
+    80
+    - (avg_latency * 2)
+    - (error_rate * 10)
+    - (total_cost * 1000)
+    + min(avg_completion_tokens / 50, 20)
+)
+        if avg_completion_tokens == 0:
+            quality_score -= 20
+
+        quality_score = max(
+    0,
+    min(100, quality_score)
+)
+
+        quality_score = round(quality_score, 2)
+
         results.append({
-            "model": model,
-            "score": round(score, 2),
-            "avg_latency": round(avg_latency, 2),
-            "cost": round(total_cost, 6)
+            "model": model.title(),
+            "quality_score": round(
+                quality_score, 2
+            ),
+            
+            "avg_latency": round(
+                avg_latency, 2
+            ),
+            "cost": round(
+                total_cost, 6
+            ),
+            "error_rate": round(
+                error_rate, 2
+            ),
+            "requests": total_requests,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": total_tokens,
+            "avg_tokens": round(avg_tokens, 2),
+            "avg_completion_tokens": round(
+                avg_completion_tokens, 2),
         })
 
     if not results:
         return {
-            "recommended_model": "No Data"
+            "recommended_model": "No Data",
+            "quality_score": 0,
+            "models": []
         }
 
-    best = max(results, key=lambda x: x["score"])
-
+    best_model = max(
+    results,
+    key=lambda x: x["quality_score"]
+)
     return {
-        "recommended_model": best["model"],
-        "score": best["score"],
-        "avg_latency": best["avg_latency"],
-        "cost": best["cost"]
-    }
+    "recommended_model": best_model["model"],
+    "quality_score": best_model["quality_score"],
+    "avg_latency": best_model["avg_latency"],
+    "cost": best_model["cost"],
+    "error_rate": best_model["error_rate"],
+    "requests": best_model["requests"],
+    "models": results
+}
 
-@app.get("/alerts")
-def get_alerts(
-    db: Session = Depends(get_db)
+from datetime import datetime, timedelta
+
+def create_alert(
+    db,
+    alert_type,
+    severity,
+    message
 ):
+
+    existing = (
+        db.query(AlertHistory)
+        .filter(
+            AlertHistory.alert_type == alert_type,
+            AlertHistory.message == message
+        )
+        .first()
+    )
+
+    if existing:
+
+        print(
+            f"{alert_type} already exists. Skipping..."
+        )
+
+        return
+
+    # NEW ALERT
+
+    send_alert_email(
+        severity,
+        alert_type,
+        message
+    )
+
+    send_slack_notification(
+        severity,
+        alert_type,
+        message
+    )
+
+    alert = AlertHistory(
+        alert_type=alert_type,
+        severity=severity,
+        message=message
+    )
+
+    db.add(alert)
+    db.commit()
+
+SLACK_WEBHOOK_URL = os.getenv ("SLACK_WEBHOOK_URL")
+
+def send_slack_notification(
+    severity,
+    alert_type,
+    message
+):
+
+    try:
+
+        payload = {
+            "text":
+                f"🚨 [{severity.upper()}] "
+                f"{alert_type}\n"
+                f"{message}"
+        }
+
+        response = requests.post(
+            SLACK_WEBHOOK_URL,
+            json=payload,
+            timeout=5
+        )
+
+        print(
+            "Slack Status:",
+            response.status_code
+        )
+
+        print(
+            "Slack Response:",
+            response.text
+        )
+
+    except Exception as e:
+
+        print(
+            "Slack notification failed:",
+            e
+        )
+
+def generate_alerts(db):
+
+    chats = db.query(ChatHistory).all()
+
+    if not chats:
+        return []
+
+    total_requests = len(chats)
+
+    avg_latency = (
+        sum(c.latency or 0 for c in chats)
+        / total_requests
+    )
+
+    error_count = len([
+        c for c in chats
+        if c.status == "error"
+    ])
+
+    error_rate = (
+        error_count / total_requests
+    ) * 100
+
+    total_cost = sum(
+        c.cost or 0
+        for c in chats
+    )
+
+    # HIGH LATENCY
+
+    if avg_latency > 5:
+        create_alert(
+            db,
+            "HIGH_LATENCY",
+            "warning",
+            f"Average latency is high ({avg_latency:.2f}s)"
+        )
+
+    # HIGH ERROR RATE
+
+    if error_rate > 10:
+        create_alert(
+            db,
+            "HIGH_ERROR_RATE",
+            "critical",
+            f"Error rate is high ({error_rate:.2f}%)"
+        )
+
+    # HIGH COST
+
+    if total_cost > 1:
+        create_alert(
+            db,
+            "HIGH_COST",
+            "warning",
+            f"Total cost exceeded budget (${total_cost:.4f})"
+        )
+
+    # QUALITY DRIFT
+
+    if avg_latency > 5:
+        create_alert(
+            db,
+            "QUALITY_DRIFT",
+            "warning",
+            f"Quality Drift Detected (Latency={avg_latency:.2f}s)"
+        )
 
     alerts = (
         db.query(AlertHistory)
-        .order_by(AlertHistory.id.desc())
-        .limit(20)
+        .order_by(
+            AlertHistory.created_at.desc()
+        )
         .all()
     )
 
     return [
         {
-            "type": alert.alert_type,
-            "message": alert.message,
-            "created_at": alert.created_at
+            "type": a.alert_type,
+            "severity": a.severity,
+            "message": a.message,
+            "created_at": a.created_at
         }
-        for alert in alerts
+        for a in alerts
     ]
+
+def monitor_system():
+
+    db = next(get_db())
+
+    try:
+
+        generate_alerts(db)
+
+        print("Monitoring check completed")
+
+    finally:
+
+        db.close()
+
+@app.get("/alerts")
+def get_alerts(db: Session = Depends(get_db)):
+
+    alerts = (
+        db.query(AlertHistory)
+        .order_by(AlertHistory.created_at.desc())
+        .all()
+    )
+
+    unique_alerts = {}
+    for alert in alerts:
+        if alert.alert_type not in unique_alerts:
+            unique_alerts[alert.alert_type] = alert
+    summary = {
+    "total_alerts": len(unique_alerts),
+    "critical_alerts": len([
+        a for a in unique_alerts.values()
+        if a.severity == "critical"
+    ]),
+    "warning_alerts": len([
+        a for a in unique_alerts.values()
+        if a.severity == "warning"
+    ])
+}
+
+    unique_alerts = {}
+
+    for alert in alerts:
+
+        if alert.alert_type not in unique_alerts:
+            unique_alerts[alert.alert_type] = {
+                "type": alert.alert_type,
+                "severity": alert.severity,
+                "message": alert.message,
+                "created_at": alert.created_at
+            }
+
+    return {
+        "summary": summary,
+        "alerts": list(unique_alerts.values())
+    }
 @app.post("/prompt-template")
 def create_prompt_template(
     data: PromptTemplateCreate,
@@ -1688,3 +2043,287 @@ def ab_testing(db: Session = Depends(get_db)):
         })
 
     return result
+
+# @app.get("/prompt-template-analytics")
+# def prompt_template_analytics(db: Session = Depends(get_db)):
+
+#     templates = db.query(PromptTemplate).all()
+
+#     if not templates:
+#         return {}
+
+#     analytics = []
+
+#     for template in templates:
+
+#         chats = (
+#             db.query(ChatHistory)
+#             .filter(
+#                 ChatHistory.template_name ==
+#                 template.name
+#             )
+#             .all()
+#         )
+
+#         usage_count = len(chats)
+
+#         avg_latency = (
+#             sum(c.latency or 0 for c in chats)
+#             / usage_count
+#             if usage_count > 0
+#             else 0
+#         )
+
+#         avg_cost = (
+#             sum(c.cost or 0 for c in chats)
+#             / usage_count
+#             if usage_count > 0
+#             else 0
+#         )
+
+#         analytics.append({
+#             "template": template.name,
+#             "usage_count": usage_count,
+#             "avg_latency": round(avg_latency, 2),
+#             "avg_cost": round(avg_cost, 6)
+#         })
+
+#     most_used = max(
+#         analytics,
+#         key=lambda x: x["usage_count"]
+#     )
+
+#     fastest = min(
+#         analytics,
+#         key=lambda x: x["avg_latency"]
+#     )
+
+#     lowest_cost = min(
+#         analytics,
+#         key=lambda x: x["avg_cost"]
+#     )
+
+#     growth = sorted(
+#         analytics,
+#         key=lambda x: x["usage_count"],
+#         reverse=True
+#     )
+
+#     return {
+#     "most_used_template": most_used,
+#     "most_used_count": template_stats[most_used]["usage"],
+
+#     "fastest_template": fastest,
+#     "fastest_latency": round(
+#         sum(template_stats[fastest]["latency"]) /
+#         len(template_stats[fastest]["latency"]),
+#         2
+#     ),
+
+#     "lowest_cost_template": lowest_cost,
+#     "lowest_cost_value": round(
+#         sum(template_stats[lowest_cost]["cost"]),
+#         6
+#     ),
+
+#     "highest_usage_growth": highest_growth,
+#     "growth_count": template_stats[highest_growth]["usage"]
+# }
+
+from collections import defaultdict
+
+@app.get("/prompt-template-analytics")
+def prompt_template_analytics(
+    db: Session = Depends(get_db)
+):
+
+    chats = db.query(ChatHistory).all()
+
+    template_stats = defaultdict(
+        lambda: {
+            "usage": 0,
+            "latency": [],
+            "cost": []
+        }
+    )
+
+    for chat in chats:
+
+        if not chat.template_name:
+            continue
+
+        template_stats[
+            chat.template_name
+        ]["usage"] += 1
+
+        template_stats[
+            chat.template_name
+        ]["latency"].append(
+            chat.latency or 0
+        )
+
+        template_stats[
+            chat.template_name
+        ]["cost"].append(
+            chat.cost or 0
+        )
+
+    if not template_stats:
+
+        return {
+            "most_used_template": "-",
+            "most_used_count": 0,
+
+            "fastest_template": "-",
+            "fastest_latency": 0,
+
+            "lowest_cost_template": "-",
+            "lowest_cost_value": 0,
+
+            "highest_usage_growth": "-",
+            "growth_count": 0
+        }
+
+    # Most Used
+
+    most_used = max(
+        template_stats,
+        key=lambda x:
+        template_stats[x]["usage"]
+    )
+
+    # Fastest
+
+    fastest = min(
+        template_stats,
+        key=lambda x:
+        (
+            sum(
+                template_stats[x]["latency"]
+            )
+            /
+            len(
+                template_stats[x]["latency"]
+            )
+        )
+    )
+
+    # Lowest Cost
+
+    lowest_cost = min(
+        template_stats,
+        key=lambda x:
+        sum(
+            template_stats[x]["cost"]
+        )
+    )
+
+    # Highest Growth
+    # For now use same as usage
+
+    highest_growth = max(
+        template_stats,
+        key=lambda x:
+        template_stats[x]["usage"]
+    )
+
+    return {
+
+        "most_used_template":
+            most_used,
+
+        "most_used_count":
+            template_stats[
+                most_used
+            ]["usage"],
+
+        "fastest_template":
+            fastest,
+
+        "fastest_latency":
+            round(
+                sum(
+                    template_stats[
+                        fastest
+                    ]["latency"]
+                )
+                /
+                len(
+                    template_stats[
+                        fastest
+                    ]["latency"]
+                ),
+                2
+            ),
+
+        "lowest_cost_template":
+            lowest_cost,
+
+        "lowest_cost_value":
+            round(
+                sum(
+                    template_stats[
+                        lowest_cost
+                    ]["cost"]
+                ),
+                6
+            ),
+
+        "highest_usage_growth":
+            highest_growth,
+
+        "growth_count":
+            template_stats[
+                highest_growth
+            ]["usage"]
+    }
+
+@app.get("/test-slack")
+def test_slack():
+
+    send_slack_notification(
+        "critical",
+        "TEST_ALERT",
+        "Slack integration is working"
+    )
+
+    return {
+        "message": "Slack notification sent"
+    }
+
+scheduler = BackgroundScheduler()
+
+scheduler.add_job(
+    monitor_system,
+    "interval",
+    minutes=1
+)
+
+scheduler.start()
+
+@app.get("/service-health")
+def service_health():
+
+    database = "UP"
+
+    try:
+
+        db = next(get_db())
+
+        db.execute(text("SELECT 1"))
+
+        db.close()
+
+    except Exception as e:
+
+        print("Database Health Check Failed:", e)
+
+        database = "DOWN"
+
+    return {
+        "api": "UP",
+        "database": database,
+        "prometheus": "UP",
+        "jaeger": "UP",
+        "langfuse": "UP"
+    }

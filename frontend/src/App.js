@@ -9,8 +9,8 @@ import BenchmarkAnalyticsPage from "./pages/BenchmarkAnalyticsPage";
 import CostPage from "./pages/CostPage";
 import QualityPage from "./pages/QualityPage";
 import AlertPage from "./pages/AlertPage";
-import ObservabilityPage from "./pages/ObservabilityPage";
-import HealthPage from "./pages/HealthPage";
+//import ObservabilityPage from "./pages/ObservabilityPage";
+// import HealthPage from "./pages/HealthPage";
 import PromptRegistryPage from "./pages/PromptRegistryPage";
 import PromptAnalyticsPage from "./pages/PromptAnalyticsPage";
 import ABTestingPage from "./pages/ABTestingPage";
@@ -610,7 +610,7 @@ if (!loggedIn) {
   {sidebarOpen ? "🚨 Alerts" : "🚨"}
 </button>
 
-      <button
+      {/* <button
   onClick={() => setActivePage("observability")}
   className={`
     w-full
@@ -626,9 +626,9 @@ if (!loggedIn) {
   `}
 >
   {sidebarOpen ? "🔍 Observability" : "🔍"}
-</button>
+</button> */}
 
-      <button
+      {/* <button
   onClick={() => setActivePage("health")}
   className={`
     w-full
@@ -644,7 +644,7 @@ if (!loggedIn) {
   `}
 >
   {sidebarOpen ? "⚙️ Health" : "⚙️"}
-</button>
+</button> */}
 
     </div>
 
@@ -807,17 +807,17 @@ if (!loggedIn) {
   <ABTestingPage />
 )}
 
-{activePage === "observability" && (
+{/* {activePage === "observability" && (
   <ObservabilityPage
     health={health}
     stats={stats}
   />
-)}
-{activePage === "health" && (
+)} */}
+{/* {activePage === "health" && (
   <HealthPage
     health={health}
   />
-)}
+)} */}
       </div>
       {toast && (
   <div

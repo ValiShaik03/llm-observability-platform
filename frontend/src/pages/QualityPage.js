@@ -1,22 +1,12 @@
 import React from "react";
 
 export default function QualityPage({
-  benchmarkStats,
   recommendedModel,
   quality
 }) {
 
-  const bestQualityModel =
-    benchmarkStats?.quality
-      ? Object.keys(
-          benchmarkStats.quality
-        ).reduce((a, b) =>
-          benchmarkStats.quality[a] >
-          benchmarkStats.quality[b]
-            ? a
-            : b
-        )
-      : "-";
+  const models =
+    recommendedModel?.models || [];
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -31,16 +21,6 @@ export default function QualityPage({
 
         <div className="bg-slate-800 p-6 rounded-2xl">
           <h3 className="text-slate-400">
-            Best Quality Model
-          </h3>
-
-          <p className="text-3xl font-bold mt-2">
-            {bestQualityModel}
-          </p>
-        </div>
-
-        <div className="bg-slate-800 p-6 rounded-2xl">
-          <h3 className="text-slate-400">
             Recommended Model
           </h3>
 
@@ -51,11 +31,21 @@ export default function QualityPage({
 
         <div className="bg-slate-800 p-6 rounded-2xl">
           <h3 className="text-slate-400">
-            Quality Score
+            Performance Score
           </h3>
 
           <p className="text-3xl font-bold mt-2">
-            {recommendedModel?.score || 0}
+            {recommendedModel?.quality_score || 0}
+          </p>
+        </div>
+
+        <div className="bg-slate-800 p-6 rounded-2xl">
+          <h3 className="text-slate-400">
+            Error Rate
+          </h3>
+
+          <p className="text-3xl font-bold mt-2">
+            {quality?.error_rate || 0}%
           </p>
         </div>
 
@@ -75,95 +65,112 @@ export default function QualityPage({
 
       <div className="bg-slate-800 p-8 rounded-2xl mb-8">
 
-        <h2 className="text-3xl font-bold mb-6">
+        <h2 className="text-3xl font-bold mb-8">
           Quality Comparison
         </h2>
 
-        {benchmarkStats?.quality &&
-          Object.entries(
-            benchmarkStats.quality
-          ).map(([model, score]) => (
+        <div className="space-y-8">
+
+          {models.map((model) => (
+
+            <div key={model.model}>
+
+              <div className="flex justify-between mb-2">
+
+                <span className="font-semibold text-xl">
+                  {model.model}
+                </span>
+
+                <span className="text-xl">
+                  {model.quality_score}
+                </span>
+
+              </div>
+
+              <div className="w-full bg-slate-700 rounded-full h-6">
+
+                <div
+                  className="
+                    bg-blue-500
+                    h-6
+                    rounded-full
+                  "
+                  style={{
+                    width:
+                      `${model.quality_score}%`
+                  }}
+                />
+
+              </div>
+
+            </div>
+
+          ))}
+
+        </div>
+
+      </div>
+
+      {/* Model Quality Details */}
+
+      <div className="bg-slate-800 p-8 rounded-2xl">
+
+        <h2 className="text-3xl font-bold mb-8">
+          Model Quality Details
+        </h2>
+
+        <div className="space-y-6">
+
+          {models.map((model) => (
+
             <div
-              key={model}
+              key={model.model}
               className="
                 flex
                 justify-between
                 border-b
                 border-slate-700
-                py-3
+                pb-4
               "
             >
-              <span>{model}</span>
-              <span>{score}</span>
+
+              <span className="text-2xl">
+                {model.model}
+              </span>
+
+              <span className="text-xl">
+
+                Latency:
+                {" "}
+                {model.avg_latency}s
+
+                {" | "}
+
+                Cost:
+                {" "}
+                ${model.cost}
+
+                {" | "}
+
+                Requests:
+                {" "}
+                {model.requests}
+
+                {" | "}
+
+                Avg Completion Tokens: {model.avg_completion_tokens?.toFixed(0)}
+
+                {" | "}
+
+                Error Rate:
+                {" "}
+                {model.error_rate}%
+
+              </span>
+
             </div>
+
           ))}
-      </div>
-
-      {/* Quality Insights */}
-
-      <div className="bg-slate-800 p-8 rounded-2xl">
-
-        <h2 className="text-3xl font-bold mb-6">
-          Quality Insights
-        </h2>
-
-        <div className="space-y-4 text-lg">
-
-          <p>
-            🏆 Highest Quality:
-            {" "}
-            <strong>
-              {bestQualityModel}
-            </strong>
-          </p>
-
-          <p>
-            🤖 Recommended:
-            {" "}
-            <strong>
-              {recommendedModel?.recommended_model || "-"}
-            </strong>
-          </p>
-
-          <p>
-            📈 Monitor quality scores
-            continuously to detect
-            model drift.
-          </p>
-
-          <hr className="border-slate-700 my-4" />
-
-          <p>
-            🚨 Drift Status:
-            {" "}
-            <strong>
-              {quality?.drift || "Unknown"}
-            </strong>
-          </p>
-
-          <p>
-            ⚡ Average Latency:
-            {" "}
-            <strong>
-              {quality?.avg_latency || 0}s
-            </strong>
-          </p>
-
-          <p>
-            📄 Average Response Length:
-            {" "}
-            <strong>
-              {quality?.avg_response_length || 0}
-            </strong>
-          </p>
-
-          <p>
-            ❌ Error Rate:
-            {" "}
-            <strong>
-              {quality?.error_rate || 0}%
-            </strong>
-          </p>
 
         </div>
 
