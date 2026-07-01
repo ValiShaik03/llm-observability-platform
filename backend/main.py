@@ -1,3 +1,13 @@
+import logging
+logger = logging.getLogger(__name__)
+logging.getLogger("uvicorn.access").disabled = True
+from opentelemetry.trace import get_tracer_provider
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
@@ -33,6 +43,18 @@ from models import (
     AlertHistory
 )
 
+from prometheus_client import Counter, Histogram
+
+cost_metric = Counter(
+    "llm_cost_usd_total",
+    "Total LLM Cost in USD"
+)
+
+latency_metric = Histogram(
+    "llm_latency_seconds",
+    "LLM Response Latency"
+)
+
 # from telemetry import tracer
 
 from otel_sdk.tracer import tracer
@@ -61,6 +83,7 @@ class LoginRequest(BaseModel):
 
 import os
 import time
+from datetime import datetime, timedelta
 import random
 from prometheus_client import Counter
 prompt_tokens_metric = Counter(
@@ -82,6 +105,7 @@ total_tokens_metric = Counter(
     "llm_tokens_total",
     "Total LLM Tokens"
 )
+
 # -----------------------------
 # LOAD ENV
 # -----------------------------
@@ -99,6 +123,35 @@ Base.metadata.create_all(bind=engine)
 # -----------------------------
 
 app = FastAPI(title="LLM Observability Platform")
+LAST_DRIFT_ALERT = None
+LAST_LATENCY_ALERT = None
+LAST_ERROR_ALERT = None
+
+# resource = Resource.create({
+#     "service.name": "llm-observability"
+# })
+
+# provider = get_tracer_provider()
+
+# if provider.__class__.__name__ != "TracerProvider":
+#     trace.set_tracer_provider(
+#         TracerProvider(resource=resource)
+#     )
+
+# tracer = trace.get_tracer(__name__)
+
+# otlp_exporter = OTLPSpanExporter(
+#     endpoint="http://localhost:4317",
+#     insecure=True
+# )
+
+# span_processor = BatchSpanProcessor(
+#     otlp_exporter
+# )
+
+# trace.get_tracer_provider().add_span_processor(
+#     span_processor
+# )
 
 FastAPIInstrumentor.instrument_app(app)
 
@@ -125,6 +178,21 @@ langfuse = Langfuse(
     secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
     host=os.getenv("LANGFUSE_HOST")
 )
+# # print(dir(langfuse))
+# print("HAS start_as_current_observation:",
+#       hasattr(langfuse, "start_as_current_observation"))
+
+# print("HAS update_current_generation:",
+#       hasattr(langfuse, "update_current_generation"))
+
+# print("HAS score_current_trace:",
+#       hasattr(langfuse, "score_current_trace"))
+# # obs = langfuse.start_observation(
+# #     name="test_observation"
+# # )
+
+# # print("OBS TYPE =", type(obs))
+# # print("OBS METHODS =", dir(obs))
 
 # -----------------------------
 # HOME
@@ -206,14 +274,6 @@ User Input:
     # chat_requests_metric.inc()
 
     print("CHAT REQUEST RECEIVED")
-    trace_obj = langfuse.trace(
-    name="llm_request",
-    input=prompt,
-    metadata={
-        "provider": selected_model,
-        "user_id": username
-    }
-)
     start_time = time.time()
     with start_chat_span(
     username,
@@ -289,7 +349,10 @@ User Input:
                 total_tokens
             )
 
-            latency = 8.0
+            latency = round(
+                time.time() - start_time,
+                2
+            )
             inference_span.set_attribute(
     "cost",
     cost
@@ -300,7 +363,40 @@ User Input:
 )
             status = "success"
             error_message = None
-        
+            
+            with tracer.start_as_current_span(
+    "llm_request"
+) as span:
+                span.set_attribute(
+                "model",
+                selected_model
+            )
+
+                span.set_attribute(
+                    "prompt_tokens",
+                    prompt_tokens
+                )
+
+                span.set_attribute(
+                    "completion_tokens",
+                    completion_tokens
+                )
+
+                span.set_attribute(
+                    "total_tokens",
+                    total_tokens
+                )
+
+                span.set_attribute(
+                    "cost",
+                    cost
+                )
+
+                span.set_attribute(
+                    "latency",
+                    latency
+                )
+
             print("OTEL ATTRIBUTES")
             print("LATENCY =", latency)
             print("TOKENS =", total_tokens)
@@ -380,9 +476,24 @@ User Input:
             db.add(chat_record)
             db.commit()
             db.refresh(chat_record)
+            
+            chat_requests_metric.inc()
 
+            prompt_tokens_metric.inc(
+                prompt_tokens
+            )
+
+            completion_tokens_metric.inc(
+                completion_tokens
+            )
+
+            total_tokens_metric.inc(
+                total_tokens
+            )
+            cost_metric.inc(cost)
+            latency_metric.observe(latency)
             # Generate alerts automatically
-            generate_alerts(db)
+            # generate_alerts(db)
 
             db_span.set_attribute(
                 "chat_id",
@@ -396,31 +507,41 @@ User Input:
     "model",
     selected_model
 )
+
+
+        quality_score = random.randint(7, 10)
+        print("MODEL =", selected_model)
         print("PROMPT TOKENS =", prompt_tokens)
         print("COMPLETION TOKENS =", completion_tokens)
         print("TOTAL TOKENS =", total_tokens)
         print("COST =", cost)
+        # observation = langfuse.start_observation(
+        #     name="llm_generation"
+        # )
 
-        quality_score = random.randint(7, 10)
-        generation = trace_obj.generation(
-        name="llm_generation",
-        model=selected_model,
-        input=prompt,
-        output=response_text,
-        
-        metadata={
-            "latency": latency,
-            "cost": cost,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens
-        }
-    )
-        generation.score(
-        name="quality",
-        value=quality_score
-    )
+        with langfuse.start_as_current_observation(
+            name="llm_generation"
+        ):
+            langfuse.update_current_generation(
+                model=selected_model,
+                input=prompt,
+                output=response_text,
+                metadata={
+                    "cost": cost,
+                    "latency": latency,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens
+                }
+            )
+
+            langfuse.score_current_trace(
+                name="quality",
+                value=quality_score
+            )
         langfuse.flush()
+        print("LANGFUSE FLUSHED")
+        print("LANGFUSE OBSERVATION CREATED")
         return {
                 "id": chat_record.id,
                 "prompt": prompt,
@@ -1038,8 +1159,15 @@ def health(db: Session = Depends(get_db)):
             )
             db.add(alert)
             db.commit()
-
-EMAIL_FROM = "mahaboobvalishaik557@gmail.com"
+    return {
+    "api": "healthy",
+    "database": postgres,
+    "prometheus": prometheus,
+    "jaeger": jaeger,
+    "langfuse": langfuse,
+    "grafana": grafana
+}
+EMAIL_FROM = os.getenv("EMAIL_FROM")
 
 EMAIL_PASSWORD = "ioho hhds ytdo xplm"
 
@@ -1351,8 +1479,8 @@ def quality_drift(db: Session = Depends(get_db)):
         errors / len(chats)
     ) * 100
 
-    print("AVG LATENCY =", avg_latency)
-    print("ERROR RATE =", error_rate)
+    # print("AVG LATENCY =", avg_latency)
+    # print("ERROR RATE =", error_rate)
 
     # -------------------------
     # QUALITY DRIFT DETECTION
@@ -1362,36 +1490,39 @@ def quality_drift(db: Session = Depends(get_db)):
 
         drift = "High"
 
-        print("HIGH DRIFT DETECTED")
-        print("CALLING EMAIL FUNCTION")
-
         existing_alert = (
             db.query(AlertHistory)
             .filter(
-                AlertHistory.alert_type
-                == "QUALITY_DRIFT"
-            )
-            .order_by(
-                AlertHistory.id.desc()
+                AlertHistory.alert_type == "QUALITY_DRIFT",
+                AlertHistory.created_at >
+                datetime.utcnow() - timedelta(hours=1)
             )
             .first()
         )
 
-        if not existing_alert:
+        if existing_alert:
+            pass
+
+        else:
+
+            logger.warning(
+                f"QUALITY DRIFT ALERT CREATED "
+                f"(Latency={avg_latency:.2f}s, "
+                f"Error Rate={error_rate:.2f}%)"
+            )
 
             alert = AlertHistory(
                 alert_type="QUALITY_DRIFT",
                 severity="critical",
                 message=(
-        f"Quality Drift Detected "
-        f"(Latency={avg_latency:.2f}s, "
-        f"Error Rate={error_rate:.2f}%)"
-    )
-)
+                    f"Quality Drift Detected "
+                    f"(Latency={avg_latency:.2f}s, "
+                    f"Error Rate={error_rate:.2f}%)"
+                )
+            )
 
             db.add(alert)
             db.commit()
-
 
     elif avg_latency > 2 or error_rate > 10:
 
@@ -1556,18 +1687,19 @@ def create_alert(
 ):
 
     existing = (
-        db.query(AlertHistory)
-        .filter(
-            AlertHistory.alert_type == alert_type,
-            AlertHistory.message == message
-        )
-        .first()
+    db.query(AlertHistory)
+    .filter(
+        AlertHistory.alert_type == alert_type,
+        AlertHistory.created_at >
+        datetime.utcnow() - timedelta(hours=1)
     )
+    .first()
+)
 
     if existing:
 
         print(
-            f"{alert_type} already exists. Skipping..."
+          f"{alert_type} already sent in last 1 hour. Skipping..."
         )
 
         return
@@ -2044,92 +2176,6 @@ def ab_testing(db: Session = Depends(get_db)):
 
     return result
 
-# @app.get("/prompt-template-analytics")
-# def prompt_template_analytics(db: Session = Depends(get_db)):
-
-#     templates = db.query(PromptTemplate).all()
-
-#     if not templates:
-#         return {}
-
-#     analytics = []
-
-#     for template in templates:
-
-#         chats = (
-#             db.query(ChatHistory)
-#             .filter(
-#                 ChatHistory.template_name ==
-#                 template.name
-#             )
-#             .all()
-#         )
-
-#         usage_count = len(chats)
-
-#         avg_latency = (
-#             sum(c.latency or 0 for c in chats)
-#             / usage_count
-#             if usage_count > 0
-#             else 0
-#         )
-
-#         avg_cost = (
-#             sum(c.cost or 0 for c in chats)
-#             / usage_count
-#             if usage_count > 0
-#             else 0
-#         )
-
-#         analytics.append({
-#             "template": template.name,
-#             "usage_count": usage_count,
-#             "avg_latency": round(avg_latency, 2),
-#             "avg_cost": round(avg_cost, 6)
-#         })
-
-#     most_used = max(
-#         analytics,
-#         key=lambda x: x["usage_count"]
-#     )
-
-#     fastest = min(
-#         analytics,
-#         key=lambda x: x["avg_latency"]
-#     )
-
-#     lowest_cost = min(
-#         analytics,
-#         key=lambda x: x["avg_cost"]
-#     )
-
-#     growth = sorted(
-#         analytics,
-#         key=lambda x: x["usage_count"],
-#         reverse=True
-#     )
-
-#     return {
-#     "most_used_template": most_used,
-#     "most_used_count": template_stats[most_used]["usage"],
-
-#     "fastest_template": fastest,
-#     "fastest_latency": round(
-#         sum(template_stats[fastest]["latency"]) /
-#         len(template_stats[fastest]["latency"]),
-#         2
-#     ),
-
-#     "lowest_cost_template": lowest_cost,
-#     "lowest_cost_value": round(
-#         sum(template_stats[lowest_cost]["cost"]),
-#         6
-#     ),
-
-#     "highest_usage_growth": highest_growth,
-#     "growth_count": template_stats[highest_growth]["usage"]
-# }
-
 from collections import defaultdict
 
 @app.get("/prompt-template-analytics")
@@ -2296,7 +2342,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(
     monitor_system,
     "interval",
-    minutes=1
+    minutes=5
 )
 
 scheduler.start()

@@ -1,24 +1,28 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+//import axios from "axios";
 
-export default function AlertsPage() {
+export default function AlertsPage({
+  alerts = [],
+  summary = {}
+}) {
 
-  const [alerts, setAlerts] = useState([]);
-  const [summary, setSummary] = useState({});
+  // const [alerts, setAlerts] = useState([]);
+  // const [alertSummary, setAlertSummary] = useState({});
+  //const [summary, setSummary] = useState({});
   const [, forceUpdate] = useState(0);
 
   // Fetch alerts every 10 seconds
-  useEffect(() => {
+  // useEffect(() => {
 
-    fetchAlerts();
+    //fetchAlerts();
 
-    const interval = setInterval(() => {
-      fetchAlerts();
-    }, 10000);
+    // const interval = setInterval(() => {
+    //   fetchAlerts();
+    // }, 30000);
 
-    return () => clearInterval(interval);
+  //   return () => clearInterval(interval);
 
-  }, []);
+  // }, []);
 
   // Update "Last Alert" card every minute
   useEffect(() => {
@@ -31,26 +35,26 @@ export default function AlertsPage() {
 
   }, []);
 
-  const fetchAlerts = async () => {
+  // const fetchAlerts = async () => {
 
-    try {
+  //   try {
 
-      const res = await axios.get(
-        "http://127.0.0.1:8000/alerts"
-      );
+  //     const res = await axios.get(
+  //       "http://127.0.0.1:8000/alerts"
+  //     );
 
-      setAlerts(res.data.alerts || []);
-      setSummary(res.data.summary || {});
+  //     setAlerts(res.data.alerts || []);
+  //     setSummary(res.data.summary || {});
 
-    } catch (error) {
+  //   } catch (error) {
 
-      console.error(
-        "Failed to fetch alerts",
-        error
-      );
+  //     console.error(
+  //       "Failed to fetch alerts",
+  //       error
+  //     );
 
-    }
-  };
+  //   }
+  // };
 
   const getLastAlertTime = () => {
 

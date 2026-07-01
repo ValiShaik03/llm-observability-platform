@@ -38,7 +38,9 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(
   localStorage.getItem("loggedIn") === "true"
 );
+  //const [alerts, setAlerts] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [alertSummary, setAlertSummary] = useState({});
   const [trendData, setTrendData] = useState([]);
   const [forecast, setForecast] =
   useState({});
@@ -48,30 +50,70 @@ function App() {
   useEffect(() => {
 
   fetchHistory();
-  fetchStats();
-  fetchHealth();
-  fetchModelStats();
-  fetchTrendData();
-  fetchForecast();
-  fetchQuality();
-  fetchBenchmarkStats();
-  fetchRecommendedModel();
+    if (activePage === "dashboard") {
+
+      fetchStats();
+      fetchHealth();
+      fetchModelStats();
+      fetchTrendData();
+      fetchForecast(); // ADD THIS
+      fetchBenchmarkStats();
+      fetchBenchmarkHistory();
+      fetchRecommendedModel();
+
+    }
+
+  if (activePage === "quality") {
+    fetchQuality();
+  }
+
+  if (activePage === "alerts") {
+    fetchAlerts();
+  }
+  
+  if (activePage === "benchmarkAnalytics") {
   fetchBenchmarkHistory();
+}
+  if (activePage === "cost") {
+
+    fetchStats();
+    fetchModelStats();
+    fetchForecast();
+
+  }
 
   const interval = setInterval(() => {
-    fetchStats();
-    fetchHealth();
-    fetchModelStats();
-    fetchTrendData();
-    fetchQuality();
-    fetchBenchmarkStats();
-    fetchRecommendedModel();
-    fetchAlerts();
-  }, 5000);
+
+    if (activePage === "dashboard") {
+
+      fetchStats();
+      fetchHealth();
+      fetchModelStats();
+      fetchTrendData();
+      fetchForecast(); // ADD THIS
+      fetchBenchmarkStats();
+      fetchBenchmarkHistory();
+      fetchRecommendedModel();
+
+    }
+
+    if (activePage === "alerts") {
+
+      fetchAlerts();
+
+    }
+
+    if (activePage === "quality") {
+
+      fetchQuality();
+
+    }
+
+  }, 60000);
 
   return () => clearInterval(interval);
 
-}, []);
+}, [activePage]);
 
 const [benchmarkStats, setBenchmarkStats] =
   useState(null);
@@ -230,18 +272,15 @@ const fetchRecommendedModel = async () => {
   }
 };
 
-const fetchBenchmarkHistory =
-async () => {
+const fetchBenchmarkHistory = async () => {
 
   try {
 
-    const response =
-      await fetch(
-        "http://localhost:8000/benchmark-dashboard"
-      );
+    const response = await fetch(
+      "http://127.0.0.1:8000/benchmark-history"
+    );
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     setBenchmarkHistory(data);
 
@@ -266,7 +305,9 @@ const fetchAlerts = async () => {
 
     const data = await response.json();
 
-    setAlerts(data);
+    setAlerts(data.alerts || []);
+    
+    setAlertSummary(data.summary || {});
 
   } catch (error) {
 
@@ -796,6 +837,7 @@ if (!loggedIn) {
 {activePage === "alerts" && (
   <AlertPage
     alerts={alerts}
+    summary={alertSummary}
   />
 )}
 

@@ -1,15 +1,30 @@
+import React from "react";
+
 export default function CostPage({
-  stats,
-  forecast,
-  modelStats
+  stats = {},
+  forecast = {},
+  modelStats = []
 }) {
 
+  console.log("STATS:", stats);
+  console.log("FORECAST:", forecast);
+  console.log("MODEL STATS:", modelStats);
+
   const cheapestModel =
-    modelStats?.length
+    modelStats.length
       ? [...modelStats].sort(
           (a, b) => a.cost - b.cost
         )[0]
       : null;
+
+  const maxCost =
+    modelStats.length
+      ? Math.max(
+          ...modelStats.map(
+            (model) => model.cost || 0
+          )
+        )
+      : 0;
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -18,7 +33,7 @@ export default function CostPage({
         Cost Intelligence
       </h1>
 
-      {/* Cost KPIs */}
+      {/* KPI Cards */}
 
       <div className="grid md:grid-cols-3 gap-6 mb-8">
 
@@ -28,7 +43,10 @@ export default function CostPage({
           </h3>
 
           <p className="text-4xl font-bold mt-2">
-            ${stats?.total_cost || 0}
+            $
+            {Number(
+              stats?.total_cost || 0
+            ).toFixed(6)}
           </p>
         </div>
 
@@ -47,7 +65,7 @@ export default function CostPage({
             Cheapest Model
           </h3>
 
-          <p className="text-3xl font-bold mt-2">
+          <p className="text-3xl font-bold mt-2 capitalize">
             {cheapestModel?.model || "-"}
           </p>
         </div>
@@ -70,7 +88,10 @@ export default function CostPage({
             </h3>
 
             <p className="text-3xl font-bold">
-              ${forecast?.forecast_7_days || 0}
+              $
+              {Number(
+                forecast?.forecast_7_days || 0
+              ).toFixed(6)}
             </p>
           </div>
 
@@ -80,7 +101,10 @@ export default function CostPage({
             </h3>
 
             <p className="text-3xl font-bold">
-              ${forecast?.forecast_30_days || 0}
+              $
+              {Number(
+                forecast?.forecast_30_days || 0
+              ).toFixed(6)}
             </p>
           </div>
 
@@ -90,7 +114,10 @@ export default function CostPage({
             </h3>
 
             <p className="text-3xl font-bold">
-              ${forecast?.forecast_90_days || 0}
+              $
+              {Number(
+                forecast?.forecast_90_days || 0
+              ).toFixed(6)}
             </p>
           </div>
 
@@ -98,58 +125,68 @@ export default function CostPage({
 
       </div>
 
-<div className="bg-slate-800 p-8 rounded-2xl mb-8">
-  <h2 className="text-3xl font-bold mb-6">
-    Cost By Model
-  </h2>
+      {/* Cost By Model */}
 
-  <div className="space-y-6">
+      <div className="bg-slate-800 p-8 rounded-2xl mb-8">
 
-    {modelStats?.map((model) => {
-      const maxCost = Math.max(
-        ...modelStats.map((m) => m.cost)
-      );
+        <h2 className="text-3xl font-bold mb-6">
+          Cost By Model
+        </h2>
 
-      const percentage =
-        maxCost > 0
-          ? (model.cost / maxCost) * 100
-          : 0;
+        <div className="space-y-6">
 
-      return (
-        <div key={model.model}>
+          {modelStats.map((model) => {
 
-          <div className="flex justify-between mb-2">
-            <span className="font-medium capitalize">
-              {model.model}
-            </span>
+            const percentage =
+              maxCost > 0
+                ? (model.cost / maxCost) * 100
+                : 0;
 
-            <span>
-              ${model.cost}
-            </span>
-          </div>
+            return (
 
-          <div className="w-full bg-slate-700 rounded-full h-4">
-            <div
-              className="
-                bg-green-500
-                h-4
-                rounded-full
-                transition-all
-              "
-              style={{
-                width: `${percentage}%`
-              }}
-            />
-          </div>
+              <div key={model.model}>
+
+                <div className="flex justify-between mb-2">
+
+                  <span className="font-medium capitalize">
+                    {model.model}
+                  </span>
+
+                  <span>
+                    $
+                    {Number(
+                      model.cost || 0
+                    ).toFixed(6)}
+                  </span>
+
+                </div>
+
+                <div className="w-full bg-slate-700 rounded-full h-4">
+
+                  <div
+                    className="
+                      bg-green-500
+                      h-4
+                      rounded-full
+                      transition-all
+                    "
+                    style={{
+                      width: `${percentage}%`
+                    }}
+                  />
+
+                </div>
+
+              </div>
+
+            );
+          })}
 
         </div>
-      );
-    })}
 
-  </div>
-</div>
+      </div>
 
-      {/* Cost Optimization Insights
+      {/* Cost Optimization Insights */}
 
       <div className="bg-slate-800 p-8 rounded-2xl">
 
@@ -160,46 +197,42 @@ export default function CostPage({
         <div className="space-y-4 text-lg">
 
           <p>
-            ✅ Cheapest Model:
-            {" "}
+            ✅ Cheapest Model:{" "}
             <strong>
               {cheapestModel?.model || "-"}
             </strong>
           </p>
 
           <p>
-            💰 Total Spend:
-            {" "}
+            💰 Total Spend:{" "}
             <strong>
-              ${stats?.total_cost || 0}
+              $
+              {Number(
+                stats?.total_cost || 0
+              ).toFixed(6)}
             </strong>
           </p>
 
           <p>
-            📦 Total Tokens:
-            {" "}
+            📦 Total Tokens:{" "}
             <strong>
               {stats?.total_tokens || 0}
             </strong>
           </p>
 
           <p>
-            🚀 Recommendation:
-            {" "}
-            Consider using
-            {" "}
+            🚀 Recommendation: Use{" "}
             <strong>
-              {cheapestModel?.model || "the cheapest model"}
-            </strong>
-            {" "}
-            for high-volume workloads to reduce operational costs.
+              {cheapestModel?.model || "-"}
+            </strong>{" "}
+            for high-volume workloads to
+            reduce operational costs.
           </p>
 
         </div>
 
       </div>
 
-      */}
     </div>
   );
 }

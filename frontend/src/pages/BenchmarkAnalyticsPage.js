@@ -1,7 +1,7 @@
 export default function BenchmarkAnalyticsPage({
   benchmarkHistory
 }) {
-
+  console.log("BENCHMARK HISTORY:", benchmarkHistory);
   const totalRuns =
     benchmarkHistory?.length || 0;
 

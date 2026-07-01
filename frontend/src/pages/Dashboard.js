@@ -15,7 +15,7 @@ import {
 } from "recharts";
 export default function Dashboard({
   stats,
-  health,
+  health = {},
   modelStats,
   trendData,
   forecast,
@@ -25,40 +25,54 @@ export default function Dashboard({
   benchmarkHistory,
   alerts
 })
-
 {
-  const [serviceHealth, setServiceHealth] = useState({});
-  useEffect(() => {
+//const [health, setHealth] = useState({});
+// const fetchHealth = async () => {
+//   try {
+//     const res = await axios.get(
+//       "http://127.0.0.1:8000/health"
+//     );
 
-  fetchServiceHealth();
+//     console.log("HEALTH RESPONSE:", res.data);
 
-  const interval = setInterval(() => {
-    fetchServiceHealth();
-  }, 10000);
+//     setHealth(res.data);
+//   } catch (err) {
+//     console.error(err);
+//   }
+// };
 
-  return () => clearInterval(interval);
+//{
+//   useEffect(() => {
 
-}, []);
-  const fetchServiceHealth = async () => {
+//   fetchServiceHealth();
 
-  try {
+//   const interval = setInterval(() => {
+//     fetchServiceHealth();
+//   }, 30000);
 
-    const res = await axios.get(
-      "http://127.0.0.1:8000/service-health"
-    );
+//   return () => clearInterval(interval);
 
-    setServiceHealth(res.data);
+// }, []);
+//   const fetchServiceHealth = async () => {
 
-  } catch (error) {
+//   try {
 
-    console.error(
-      "Service health fetch failed",
-      error
-    );
+//     const res = await axios.get(
+//       "http://127.0.0.1:8000/service-health"
+//     );
 
-  }
+//     setServiceHealth(res.data);
 
-};
+//   } catch (error) {
+
+//     console.error(
+//       "Service health fetch failed",
+//       error
+//     );
+
+//   }
+
+// };
   const getStatusColor = (status) =>
     status === "healthy"
       ? "text-green-400"
@@ -150,33 +164,23 @@ console.log(
   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 
     <div className="bg-slate-700 p-4 rounded-xl">
-      {serviceHealth.api === "UP"
-        ? "🟢 API"
-        : "🔴 API"}
+      {health?.api === "healthy" ? "🟢 API" : "🔴 API"}
     </div>
 
     <div className="bg-slate-700 p-4 rounded-xl">
-      {serviceHealth.database === "UP"
-        ? "🟢 Database"
-        : "🔴 Database"}
+      {health?.database === "healthy" ? "🟢 Database" : "🔴 Database"}
     </div>
 
     <div className="bg-slate-700 p-4 rounded-xl">
-      {serviceHealth.prometheus === "UP"
-        ? "🟢 Prometheus"
-        : "🔴 Prometheus"}
+      {health?.prometheus === "healthy" ? "🟢 Prometheus" : "🔴 Prometheus"}
     </div>
 
     <div className="bg-slate-700 p-4 rounded-xl">
-      {serviceHealth.jaeger === "UP"
-        ? "🟢 Jaeger"
-        : "🔴 Jaeger"}
+      {health?.jaeger === "healthy" ? "🟢 Jaeger" : "🔴 Jaegar"}
     </div>
 
     <div className="bg-slate-700 p-4 rounded-xl">
-      {serviceHealth.langfuse === "UP"
-        ? "🟢 Langfuse"
-        : "🔴 Langfuse"}
+      {health?.langfuse === "healthy" ? "🟢 Langfuse" : "🔴 Langfuse"}
     </div>
 
   </div>
