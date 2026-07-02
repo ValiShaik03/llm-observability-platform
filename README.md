@@ -462,7 +462,7 @@ https://hub.docker.com/u/shaikvali03
 
 LinkedIn:
 
-(Add your LinkedIn profile here)
+https://linkedin.com/in/mahaboobvalishaik/
 
 ---
 
