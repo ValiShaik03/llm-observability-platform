@@ -21,7 +21,7 @@ services:
     depends_on:
       - postgres
     env_file:
-      - ./backend/.env
+      - .env
     ports:
       - "8000:8000"
 
