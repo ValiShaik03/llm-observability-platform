@@ -337,53 +337,63 @@ docker compose restart
 
 # 📷 Screenshots
 
-## Dashboard
+## 🏠 AI Assistant
 
-```
-screenshots/dashboard.png
-```
+![AI Assistant](screenshots/home.png)
 
+## 📊 Observability Dashboard
+
+![Dashboard](screenshots/dashboard1.png)
+
+## ⚙️ Service Health
+
+![Service Health](screenshots/dashboard1.1.png)
+
+## 🤖 Model Rankings
+
+![Model Rankings](screenshots/dashboard1.2.png)
+
+## 📈 Benchmark Analytics
+
+![Benchmark Analytics](screenshots/benchmark_analytics.png)
+
+## 💰 Cost Intelligence
+
+![Cost Dashboard](screenshots/costdashboard.png)
+
+## 🧠 Quality Dashboard
+
+![Quality Dashboard](screenshots/qualitydashboard.png)
+
+## 📋 Prompt Registry
+
+![Prompt Registry](screenshots/promptregistry.png)
+
+## 📊 Prompt Analytics
+
+![Prompt Analytics](screenshots/promptanalytics.png)
+
+## 🚨 Alert Center
+
+![Alert Center](screenshots/AlertCenter.png)
+
+## 📊 Grafana Dashboard
+
+![Grafana Dashboard](screenshots/grafana.png)
+
+## 📈 Prometheus Metrics
+
+![Prometheus Metrics](screenshots/promtheus.png)
+
+## 🔍 Jaeger Search
+
+![Jaeger Search](screenshots/jaeger.png)
+
+## 🛰️ Jaeger Trace Details
+
+![Jaeger Trace](screenshots/jaeger1.1.png)
 ---
 
-## Cost Analytics
-
-```
-screenshots/cost.png
-```
-
----
-
-## Benchmark Analytics
-
-```
-screenshots/benchmark.png
-```
-
----
-
-## Grafana
-
-```
-screenshots/grafana.png
-```
-
----
-
-## Prometheus
-
-```
-screenshots/prometheus.png
-```
-
----
-
-## Jaeger
-
-```
-screenshots/jaeger.png
-```
-
----
 
 # 📊 Metrics Collected
 
