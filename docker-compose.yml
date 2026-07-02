@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   postgres:
     image: postgres:15
@@ -13,20 +15,18 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   backend:
-    build:
-      context: ./backend
+    image: shaikvali03/llm-observability-backend:latest
     container_name: llm_backend
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
     depends_on:
       - postgres
+    env_file:
+      - ./backend/.env
     ports:
       - "8000:8000"
 
   frontend:
-    build:
-      context: ./frontend
+    image: shaikvali03/llm-observability-frontend:latest
     container_name: llm_frontend
     restart: unless-stopped
     depends_on:
